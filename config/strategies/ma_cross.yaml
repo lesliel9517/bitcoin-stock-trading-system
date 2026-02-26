@@ -1,0 +1,25 @@
+strategy:
+  name: ma_cross
+  class: MACrossStrategy
+  description: "Moving Average Crossover Strategy"
+
+parameters:
+  short_window: 3
+  long_window: 8
+
+symbols:
+  - BTC-USD
+  - ETH-USD
+
+exchange: binance
+timeframe: 1h
+
+risk:
+  max_position: 0.05
+  stop_loss: 0.02
+  take_profit: 0.05
+
+backtest:
+  initial_capital: 100000
+  commission: 0.001
+  slippage: 0.0005

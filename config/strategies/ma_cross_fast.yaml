@@ -1,0 +1,25 @@
+strategy:
+  name: ma_cross_fast
+  class: MACrossStrategy
+  description: "Fast MA Cross Strategy for Testing (Short Windows)"
+
+parameters:
+  short_window: 2
+  long_window: 5
+
+symbols:
+  - BTC-USD
+  - ETH-USD
+
+exchange: binance
+timeframe: 1m
+
+risk:
+  max_position: 0.95
+  stop_loss: 0.05
+  take_profit: 0.10
+
+backtest:
+  initial_capital: 100000
+  commission: 0.001
+  slippage: 0.0005

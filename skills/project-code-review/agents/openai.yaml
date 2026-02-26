@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Code Review"
+  short_description: "Run structured review for this trading repo"
+  default_prompt: "Review this project for bugs, risks, and missing tests with file/line findings."

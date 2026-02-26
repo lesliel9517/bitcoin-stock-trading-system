@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x scripts/setup.sh examples/quick_backtest.py)",
+      "Bash(chmod +x examples/live_trading_demo.py)",
+      "Bash(chmod +x /Users/zixuan.liu/workspace/bitcoin-stock-trading-system/quick_trade.sh)",
+      "Bash(ls -la /Users/zixuan.liu/workspace/bitcoin-stock-trading-system/.env*)",
+      "Bash(btc-trade --help)",
+      "Bash(chmod +x /Users/zixuan.liu/workspace/bitcoin-stock-trading-system/paper_trade.sh)",
+      "Bash(python -c \"\nimport asyncio\nimport websockets\n\nasync def test_binance_ws\\(\\):\n    url = ''wss://stream.binance.com:9443/ws/btcusdt@trade''\n    print\\(f''Testing connection to: {url}''\\)\n    try:\n        async with websockets.connect\\(url\\) as ws:\n            print\\(''✓ Connected successfully!''\\)\n            # Receive one message\n            msg = await asyncio.wait_for\\(ws.recv\\(\\), timeout=5.0\\)\n            print\\(f''✓ Received data: {msg[:100]}...''\\)\n            return True\n    except Exception as e:\n        print\\(f''✗ Connection failed: {e}''\\)\n        return False\n\nresult = asyncio.run\\(test_binance_ws\\(\\)\\)\nexit\\(0 if result else 1\\)\n\")",
+      "Bash(source .venv/bin/activate)",
+      "Bash(python3 -c \"\nimport asyncio\nimport websockets\n\nasync def test_binance_ws\\(\\):\n    url = ''wss://stream.binance.com:9443/ws/btcusdt@trade''\n    print\\(''Testing Binance WebSocket connection...''\\)\n    print\\(f''URL: {url}''\\)\n    try:\n        async with websockets.connect\\(url\\) as ws:\n            print\\(''✓ Connected successfully!''\\)\n            msg = await asyncio.wait_for\\(ws.recv\\(\\), timeout=5.0\\)\n            print\\(f''✓ Received data: {msg[:100]}...''\\)\n            return True\n    except Exception as e:\n        print\\(f''✗ Connection failed: {e}''\\)\n        return False\n\nresult = asyncio.run\\(test_binance_ws\\(\\)\\)\nexit\\(0 if result else 1\\)\n\")",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode simulation --capital 100000 --duration 30)",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode simulation --capital 100000 --initial-price 66886 --duration 30)",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode paper --capital 100000 --duration 30)",
+      "Bash(pytest -v)",
+      "Bash(source /Users/zixuan.liu/workspace/bitcoin-stock-trading-system/.venv/bin/activate)",
+      "WebSearch",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode paper --capital 100000 --duration 15)",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode simulation --capital 100000 --duration 60 --update-interval 0.5 --initial-price 50000)",
+      "Bash(pip install plotext)",
+      "Bash(btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode simulation --capital 100000 --duration 30 --update-interval 0.5 --initial-price 50000 --realtime-chart)",
+      "Bash(pip install textual plotext)",
+      "Bash(chmod +x:*)",
+      "Bash(python:*)",
+      "Bash(source:*)",
+      "Bash(tail:*)",
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(curl:*)",
+      "Bash(echo:*)",
+      "Bash(ls:*)",
+      "Bash(btc-trade trade:*)",
+      "Bash(git init:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

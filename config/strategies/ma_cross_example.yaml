@@ -1,0 +1,31 @@
+# 均线交叉策略配置
+
+strategy:
+  name: ma_cross
+  description: "基于短期和长期移动平均线的交叉信号进行交易"
+
+  # 策略参数
+  parameters:
+    short_window: 5      # 短期均线周期
+    long_window: 20      # 长期均线周期
+    ma_type: SMA         # 均线类型：SMA（简单移动平均）或 EMA（指数移动平均）
+
+  # 交易对配置
+  symbols:
+    - BTC-USD
+    - ETH-USD
+
+  # 时间周期
+  timeframe: 1h
+
+  # 风险管理
+  risk:
+    stop_loss: 0.02        # 止损：2%
+    take_profit: 0.05      # 止盈：5%
+    max_position_size: 0.3 # 单个持仓最大占比：30%
+
+  # 回测配置
+  backtest:
+    initial_capital: 100000
+    commission: 0.001      # 手续费：0.1%
+    slippage: 0.0005       # 滑点：0.05%

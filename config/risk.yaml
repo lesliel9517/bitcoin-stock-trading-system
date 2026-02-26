@@ -1,0 +1,28 @@
+risk:
+  # 仓位限制
+  max_position_size: 0.1      # 单个持仓最大占比10%
+  max_total_position: 0.8     # 总持仓最大占比80%
+
+  # 回撤控制
+  max_drawdown: 0.2           # 最大回撤20%
+  max_daily_loss: 0.05        # 每日最大亏损5%
+
+  # 订单限制
+  max_orders_per_day: 100     # 每日最大订单数
+  max_order_value: 10000      # 单笔订单最大金额
+
+  # 止损止盈
+  stop_loss:
+    enabled: true
+    default_percent: 0.02     # 默认止损2%
+    trailing: false           # 是否启用移动止损
+
+  take_profit:
+    enabled: true
+    default_percent: 0.05     # 默认止盈5%
+
+  # 仓位管理
+  position_sizing:
+    method: fixed             # kelly | fixed | risk_parity
+    risk_per_trade: 0.02      # 每笔交易风险2%
+    max_leverage: 1.0         # 最大杠杆倍数
