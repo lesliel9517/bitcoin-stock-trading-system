@@ -1,27 +1,17 @@
 """
 Professional Real-time Trading Dashboard
 
-Left: Candlestick chart + Time-sharing chart (line chart)
-Right: Trading info and key metrics
+A rich terminal UI for monitoring live trading with candlestick charts,
+real-time metrics, and trade history.
 """
 
-import asyncio
 from datetime import datetime
-from decimal import Decimal
 from collections import deque
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.table import Table
-from rich.live import Live
 from rich.text import Text
-import os
-
-from src.core.event_bus import EventBus
-from src.core.event import MarketEvent, EventType
-from src.strategies.examples.adaptive_strategy import AdaptiveStrategy
-from src.trading.portfolio import Portfolio
-from src.data.binance_feed import BinanceDataFeed
 
 
 class ProfessionalDashboard:
@@ -104,8 +94,8 @@ class ProfessionalDashboard:
 
         # Left side: chart + trade log
         layout["left"].split_column(
-            Layout(name="chart", ratio=1),
-            Layout(name="trade_log", ratio=1.5)
+            Layout(name="chart", ratio=2),
+            Layout(name="trade_log", ratio=3)
         )
 
         return layout
@@ -232,26 +222,25 @@ class ProfessionalDashboard:
                         if chart[r][i] == " ":
                             chart[r][i] = f"[{line_color}]│[/{line_color}]"
 
-        # Build chart string with price labels and change percentage (2 decimal places)
+        # Build chart string with price labels and change percentage (only show highest and lowest)
         lines = []
+        # Use price_24h_start as baseline (today's opening price at 00:00)
         baseline_price = self.price_24h_start if self.price_24h_start > 0 else self.current_price
 
         for row_idx, row in enumerate(chart):
-            # Add price labels with 2 decimal places and change percentage
+            # Only show price labels with percentage for highest and lowest
             if row_idx == 0:
+                # Highest price
                 change_pct = ((max_p - baseline_price) / baseline_price * 100) if baseline_price > 0 else 0
                 change_sign = "+" if change_pct >= 0 else ""
                 label = f"${max_p:>8.2f} {change_sign}{change_pct:>5.2f}% │"
             elif row_idx == chart_height - 1:
+                # Lowest price
                 change_pct = ((min_p - baseline_price) / baseline_price * 100) if baseline_price > 0 else 0
                 change_sign = "+" if change_pct >= 0 else ""
                 label = f"${min_p:>8.2f} {change_sign}{change_pct:>5.2f}% │"
-            elif row_idx == chart_height // 2:
-                mid_p = (max_p + min_p) / 2
-                change_pct = ((mid_p - baseline_price) / baseline_price * 100) if baseline_price > 0 else 0
-                change_sign = "+" if change_pct >= 0 else ""
-                label = f"${mid_p:>8.2f} {change_sign}{change_pct:>5.2f}% │"
             else:
+                # No label for middle rows
                 label = " " * 22 + "│"
 
             lines.append(label + "".join(row))
@@ -648,175 +637,3 @@ class ProfessionalDashboard:
         return layout
 
 
-async def main():
-    """Run professional real-time trading dashboard"""
-
-    # Disable all logger output (only show dashboard)
-    import logging
-    logging.getLogger().setLevel(logging.CRITICAL)
-    from src.utils.logger import logger
-    logger.remove()  # Remove all handlers
-
-    console = Console()
-
-    # Initialize components
-    event_bus = EventBus()
-    portfolio = Portfolio(initial_balance=Decimal(100000))
-    dashboard = ProfessionalDashboard(max_points=100)
-
-    # Add initial system logs to dashboard
-    dashboard.add_log("启动专业实时交易系统...", "info")
-
-    # Initialize strategy
-    strategy_config = {
-        'parameters': {
-            'ma_short': 10,
-            'ma_long': 30,
-            'volatility_window': 20,
-            'trend_window': 50
-        }
-    }
-    strategy = AdaptiveStrategy('adaptive_live', strategy_config)
-    strategy.event_bus = event_bus
-    strategy.start()
-
-    # Initialize data feed
-    data_feed = BinanceDataFeed(event_bus)
-    symbol = "BTCUSDT"
-
-    dashboard.add_log("连接 Binance WebSocket...", "info")
-
-    # Trading state
-    position = Decimal(0)
-    entry_price = None
-
-    # Subscribe and start data feed
-    await data_feed.subscribe(symbol)
-    await data_feed.start()
-
-    dashboard.add_log("已连接，开始接收实时数据", "info")
-
-    # Load historical data if not in live mode
-    if dashboard.time_range != 'live':
-        dashboard.add_log(f"正在加载 {dashboard.time_range} 历史数据...", "info")
-        await dashboard.fetch_historical_data(symbol, dashboard.time_range)
-
-    await asyncio.sleep(1)
-
-    # Start event bus
-    await event_bus.start()
-
-    # Data aggregation for OHLC
-    candle_data = {'open': 0, 'high': 0, 'low': float('inf'), 'close': 0, 'count': 0}
-
-    with Live(dashboard.render(), refresh_per_second=1, console=console, screen=True) as live:
-        try:
-            while True:
-                # Get market events
-                if not event_bus.queue.empty():
-                    event = await event_bus.queue.get()
-
-                    if isinstance(event, MarketEvent):
-                        price = float(event.price)
-                        volume = float(event.volume) if event.volume else 0
-
-                        # Update price
-                        dashboard.update_price(price, volume)
-
-                        # Aggregate OHLC data (every 10 ticks)
-                        if candle_data['count'] == 0:
-                            candle_data['open'] = price
-                            candle_data['high'] = price
-                            candle_data['low'] = price
-
-                        candle_data['high'] = max(candle_data['high'], price)
-                        candle_data['low'] = min(candle_data['low'], price)
-                        candle_data['close'] = price
-                        candle_data['count'] += 1
-
-                        if candle_data['count'] >= 10:
-                            dashboard.update_ohlc(
-                                candle_data['open'],
-                                candle_data['high'],
-                                candle_data['low'],
-                                candle_data['close']
-                            )
-                            candle_data = {'open': 0, 'high': 0, 'low': float('inf'), 'close': 0, 'count': 0}
-
-                        # Update portfolio
-                        portfolio.update_prices({symbol: Decimal(str(price))})
-
-                        # Process strategy
-                        signal = await strategy.on_market_data(event)
-
-                        # Update MA if available
-                        if symbol in strategy._data_cache:
-                            data = strategy._data_cache[symbol]
-                            if len(data) >= 30:
-                                data_with_ind = strategy.calculate_indicators(data.copy())
-                                if len(data_with_ind) > 0:
-                                    latest = data_with_ind.iloc[-1]
-                                    if 'ma_short' in latest and 'ma_long' in latest:
-                                        dashboard.update_ma(
-                                            float(latest['ma_short']),
-                                            float(latest['ma_long'])
-                                        )
-
-                        # Handle signals
-                        if signal:
-                            dashboard.add_log(f"收到 {signal.signal_type.upper()} 信号 @ ${price:,.2f}", "signal")
-
-                            if signal.signal_type == 'buy' and position == 0:
-                                # Buy
-                                quantity = (portfolio.cash * Decimal("0.95")) / Decimal(str(price))
-                                cost = quantity * Decimal(str(price))
-
-                                # Update portfolio position and cash
-                                portfolio.update_position(symbol, quantity, Decimal(str(price)))
-                                portfolio.cash -= cost  # Deduct cash
-                                position = quantity
-                                entry_price = Decimal(str(price))
-
-                                dashboard.add_log(f"执行买入订单: {float(quantity):.6f} BTC @ ${price:,.2f}", "trade")
-                                dashboard.add_trade('buy', price, quantity=float(quantity))
-
-                            elif signal.signal_type == 'sell' and position > 0:
-                                # Sell
-                                sell_value = position * Decimal(str(price))
-
-                                dashboard.add_log(f"执行卖出订单: {float(position):.6f} BTC @ ${price:,.2f}", "trade")
-                                portfolio.update_position(symbol, -position, Decimal(str(price)))
-                                portfolio.cash += sell_value  # Add cash back
-
-                                # Pass entry price and quantity for PnL calculation
-                                dashboard.add_trade('sell', price, float(entry_price) if entry_price else None, quantity=float(position))
-                                position = Decimal(0)
-                                entry_price = None
-
-                        # Update stats
-                        position_status = f"持仓 {float(position):.4f} BTC" if position > 0 else "空仓"
-                        dashboard.update_stats(
-                            float(portfolio.get_total_value()),
-                            float(portfolio.cash),
-                            position_status,
-                            strategy.market_regime,
-                            strategy.volatility_regime
-                        )
-
-                        # Update display
-                        live.update(dashboard.render())
-
-                await asyncio.sleep(0.1)
-
-        except KeyboardInterrupt:
-            pass  # Dashboard will handle the display
-        finally:
-            await data_feed.stop()
-            await event_bus.stop()
-
-
-if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        pass  # Silent exit

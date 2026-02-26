@@ -7,6 +7,11 @@ from pathlib import Path
 import json
 import os
 
+# CRITICAL: Disable loguru's default handler IMMEDIATELY on module import
+# This prevents ANY console output in dashboard mode
+from loguru import logger as _loguru_logger
+_loguru_logger.remove()  # Remove default stderr handler
+
 from ...core.engine import TradingEngine
 from ...strategies.examples.ma_cross import MACrossStrategy
 from ...trading.exchanges.simulator import SimulatedExchange
@@ -36,8 +41,31 @@ def trade():
 @click.option('--time-range', default='live', type=click.Choice(['live', 'day', 'week', 'month', 'year']), help='Time range: live (real-time), day (24h), week (7d), month (30d), year (365d)')
 @click.option('--ma-short', default=10, type=int, help='Short MA period for dashboard (default: 10)')
 @click.option('--ma-long', default=30, type=int, help='Long MA period for dashboard (default: 30)')
-def start(strategy, symbol, mode, capital, duration, update_interval, initial_price, dashboard, time_range, ma_short, ma_long):
+@click.pass_context
+def start(ctx, strategy, symbol, mode, capital, duration, update_interval, initial_price, dashboard, time_range, ma_short, ma_long):
     """Start real-time trading with optional dashboard visualization"""
+
+    # Setup logging based on mode
+    if dashboard and mode in ['simulation', 'paper']:
+        # Dashboard mode: only log to file
+        from pathlib import Path
+        from loguru import logger as loguru_logger
+
+        log_dir = Path("./data/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        loguru_logger.add(
+            log_dir / "trading.log",
+            level="INFO",
+            rotation="100 MB",
+            retention="30 days",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+        )
+    else:
+        # Normal mode: setup console logging
+        from ...utils.logger import setup_logger
+        log_level = ctx.obj.get('log_level', 'INFO') if ctx.obj else 'INFO'
+        log_file = Path('./data/logs/trading.log')
+        setup_logger(log_level=log_level, log_file=str(log_file))
 
     try:
         if dashboard and mode in ['simulation', 'paper']:
@@ -54,51 +82,70 @@ def start(strategy, symbol, mode, capital, duration, update_interval, initial_pr
     except KeyboardInterrupt:
         click.echo("\n\n交易已停止")
     except Exception as e:
-        click.echo(f"\n错误: {e}", err=True)
+        # Log full traceback to file
+        import traceback
+        from pathlib import Path
+        from datetime import datetime
+
+        error_log = Path("./data/logs/error.log")
+        error_log.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(error_log, 'a') as f:
+            f.write(f"\n\n{'='*80}\n")
+            f.write(f"Error at {datetime.now()}\n")
+            f.write(f"{'='*80}\n")
+            traceback.print_exc(file=f)
+
+        click.echo(f"\n错误: {e}")
+        click.echo(f"完整错误已记录到: {error_log}")
         logger.error(f"Trading failed: {e}", exc_info=True)
 
 
 def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, initial_price, update_interval, time_range='live'):
     """Run trading with professional dashboard - silent mode, all output in dashboard"""
+
+    # CRITICAL: Disable ALL console logging BEFORE any imports
+    import logging
+    import sys
+    from pathlib import Path
+    from datetime import datetime
+    import traceback
+
+    # Disable standard logging to console
+    logging.getLogger().handlers = []
+    logging.getLogger().setLevel(logging.CRITICAL)
+
+    # Disable loguru console output
+    from loguru import logger as loguru_logger
+    loguru_logger.remove()  # Remove all handlers
+
+    # Only log to file, not console
+    log_dir = Path("./data/logs")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    loguru_logger.add(
+        log_dir / "trading.log",
+        level="INFO",
+        rotation="100 MB",
+        retention="30 days",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+    )
+
     import asyncio
     from decimal import Decimal
     from ...core.event_bus import EventBus
     from ...trading.portfolio import Portfolio
     from ...strategies.examples.adaptive_strategy import AdaptiveStrategy
     from ...core.event import EventType
-
-    # Import dashboard
-    import sys
-    from pathlib import Path
-    examples_path = Path(__file__).parent.parent.parent.parent / 'examples'
-    sys.path.insert(0, str(examples_path))
-
-    from professional_realtime import ProfessionalDashboard
+    from ..dashboard import ProfessionalDashboard
     from rich.console import Console
     from rich.live import Live
 
     async def run_dashboard():
         console = Console()
 
-        # Suppress ALL logger output to console
-        import logging
-        import sys
-
-        # Disable all loguru and standard logging
-        logging.getLogger().setLevel(logging.CRITICAL)
-        for handler in logging.root.handlers[:]:
-            logging.root.removeHandler(handler)
-
-        # Suppress loguru logger
-        try:
-            from loguru import logger as loguru_logger
-            loguru_logger.remove()  # Remove all handlers
-        except:
-            pass
-
         # Initialize components
         event_bus = EventBus()
-        portfolio = Portfolio(initial_balance=Decimal(capital))
+        portfolio = Portfolio(initial_balance=Decimal(str(capital)))
         dashboard = ProfessionalDashboard(max_points=100)
 
         # Add startup logs to dashboard (NO console output)
@@ -149,7 +196,7 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
 
         # Initialize dashboard with data
         dashboard.update_price(float(initial_price or 66886), 100.0)
-        dashboard.update_stats(float(capital), "空仓", "unknown", "normal")
+        dashboard.update_stats(float(capital), float(capital), "空仓", "unknown", "normal")
 
         await asyncio.sleep(0.5)
 
@@ -226,15 +273,21 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
 
                             if signal_type == 'buy' and position == 0:
                                 quantity = (portfolio.cash * Decimal("0.95")) / Decimal(str(price))
+                                cost = quantity * Decimal(str(price))
+
                                 portfolio.update_position(symbol, quantity, Decimal(str(price)))
+                                portfolio.cash -= cost
                                 position = quantity
                                 entry_price = Decimal(str(price))
                                 dashboard.add_log(f"✓ 执行买入: {float(quantity):.6f} BTC @ ${price:,.2f}", "trade")
                                 dashboard.add_trade('buy', price, quantity=float(quantity))
 
                             elif signal_type == 'sell' and position > 0:
+                                sell_value = position * Decimal(str(price))
+
                                 dashboard.add_log(f"✓ 执行卖出: {float(position):.6f} BTC @ ${price:,.2f}", "trade")
                                 portfolio.update_position(symbol, -position, Decimal(str(price)))
+                                portfolio.cash += sell_value
                                 dashboard.add_trade('sell', price, float(entry_price) if entry_price else None, float(position))
                                 position = Decimal(0)
                                 entry_price = None
@@ -249,6 +302,7 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
                         position_status = f"持仓 {float(position):.4f} BTC" if position > 0 else "空仓"
                         dashboard.update_stats(
                             float(portfolio.get_total_value()),
+                            float(portfolio.cash),
                             position_status,
                             strategy.market_regime,
                             strategy.volatility_regime
@@ -617,13 +671,8 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
         from ...trading.portfolio import Portfolio
         from ...strategies.examples.adaptive_strategy import AdaptiveStrategy
 
-        # Import dashboard
-        import sys
-        from pathlib import Path
-        examples_path = Path(__file__).parent.parent.parent.parent / 'examples'
-        sys.path.insert(0, str(examples_path))
-
-        from professional_realtime import ProfessionalDashboard
+        # Import dashboard from official module
+        from ..dashboard import ProfessionalDashboard
         from rich.console import Console
         from rich.live import Live
 
@@ -632,7 +681,7 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
 
             # Initialize components
             event_bus = EventBus()
-            portfolio = Portfolio(initial_balance=Decimal(capital))
+            portfolio = Portfolio(initial_balance=Decimal(str(capital)))
             dashboard = ProfessionalDashboard(max_points=100)
 
             # Initialize strategy
@@ -692,7 +741,7 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
 
             # Initialize dashboard with some data so it's not empty on first render
             dashboard.update_price(66886.0, 100.0)
-            dashboard.update_stats(float(portfolio.get_total_value()), "空仓", "unknown", "normal")
+            dashboard.update_stats(float(portfolio.get_total_value()), float(portfolio.cash), "空仓", "unknown", "normal")
 
             # Give a moment for initial events to queue
             await asyncio.sleep(1)
@@ -758,25 +807,32 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
                                     if signal.signal_type == 'buy' and position == 0:
                                         # Buy
                                         quantity = (portfolio.cash * Decimal("0.95")) / Decimal(str(price))
+                                        cost = quantity * Decimal(str(price))
+
                                         portfolio.update_position(symbol, quantity, Decimal(str(price)))
+                                        portfolio.cash -= cost
                                         position = quantity
                                         entry_price = Decimal(str(price))
 
-                                        dashboard.add_trade('buy', price)
+                                        dashboard.add_trade('buy', price, quantity=float(quantity))
 
                                     elif signal.signal_type == 'sell' and position > 0:
                                         # Sell
+                                        sell_value = position * Decimal(str(price))
+
                                         portfolio.update_position(symbol, -position, Decimal(str(price)))
-                                        position = Decimal(0)
+                                        portfolio.cash += sell_value
 
                                         # Pass entry price for PnL color calculation
-                                        dashboard.add_trade('sell', price, float(entry_price) if entry_price else None)
+                                        dashboard.add_trade('sell', price, float(entry_price) if entry_price else None, float(position))
+                                        position = Decimal(0)
                                         entry_price = None
 
                                 # Update stats
                                 position_status = f"持仓 {float(position):.4f} BTC" if position > 0 else "空仓"
                                 dashboard.update_stats(
                                     float(portfolio.get_total_value()),
+                                    float(portfolio.cash),
                                     position_status,
                                     strategy.market_regime,
                                     strategy.volatility_regime

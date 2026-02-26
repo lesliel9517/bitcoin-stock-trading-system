@@ -5,7 +5,6 @@ from pathlib import Path
 
 from .commands.backtest import backtest
 from .commands.trade import trade
-from ..utils.logger import setup_logger
 from ..utils.config import get_config
 
 
@@ -13,19 +12,19 @@ from ..utils.config import get_config
 @click.version_option(version='0.1.0')
 @click.option('--log-level', default='INFO', help='日志级别')
 @click.option('--config-dir', help='配置文件目录')
-def cli(log_level, config_dir):
+@click.pass_context
+def cli(ctx, log_level, config_dir):
     """Bitcoin & Stock Trading System
 
     一个功能完整的实时量化交易系统
     """
-    # 设置日志
-    log_file = Path('./data/logs/trading.log')
-    setup_logger(log_level=log_level, log_file=str(log_file))
+    # Store log level in context for subcommands to use
+    ctx.ensure_object(dict)
+    ctx.obj['log_level'] = log_level
+    ctx.obj['config_dir'] = config_dir
 
-    # 设置配置目录
-    if config_dir:
-        config = get_config()
-        config.config_dir = Path(config_dir)
+    # Don't setup logger here - let subcommands decide
+    # This allows dashboard mode to suppress console output
 
 
 # 注册命令组
