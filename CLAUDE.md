@@ -28,36 +28,7 @@ cp .env.example .env
 
 ### Quick Start
 
-#### Quick Start Scripts
-
-Several shell scripts are provided for quick testing:
-
-```bash
-./quick_trade.sh       # 60-second simulation with fake data
-./paper_trade.sh       # Paper trading with real Binance data
-./live_trade.sh        # Live trading mode
-./realtime_demo.sh     # Real-time dashboard demo
-./simple_realtime.sh   # Simplified dashboard demo
-./terminal_demo.sh     # Terminal-style dashboard demo
-./adaptive_demo.sh     # Adaptive strategy demo
-```
-
-#### Run Examples Directly
-
-```bash
-# Backtesting examples
-python examples/quick_backtest.py
-python examples/demo_backtest.py
-python examples/adaptive_backtest_demo.py
-
-# Live trading examples
-python examples/live_trading_demo.py
-
-# Real-time dashboard examples
-python examples/professional_realtime.py
-python examples/simple_realtime.py
-python examples/terminal_realtime.py
-```
+Use the CLI commands to start trading:
 
 ### Real-time Dashboard Visualization
 
@@ -82,10 +53,10 @@ btc-trade trade start --strategy ma_cross --symbol BTC-USD --mode paper --ma-sho
 - Signal and trade history with color-coded output
 - Professional layout matching trading platforms like Futu (富途牛牛)
 
-**Available Dashboard Modes**:
-- `professional_realtime.py`: Full-featured dashboard with candlestick charts
-- `simple_realtime.py`: Simplified dashboard for quick monitoring
-- `terminal_realtime.py`: Terminal-style display for minimal resource usage
+**Available Dashboard Implementations**:
+- `src/cli/dashboard/professional.py`: Professional dashboard with Rich library (used by CLI)
+- `src/monitor/realtime_dashboard.py`: Real-time dashboard with plotext charts
+- `src/monitor/simplified_dashboard.py`: Simplified ASCII dashboard for any environment
 
 ### Testing
 
@@ -423,25 +394,15 @@ Use clear, scoped commits following conventional commit style:
 
 **Reference**: See `src/strategies/examples/ma_cross.py` for a complete example.
 
-## Example Scripts
+## Dashboard Implementation
 
-The `examples/` directory contains ready-to-run demonstration scripts:
+The system includes multiple dashboard implementations in `src/monitor/` and `src/cli/dashboard/`:
 
-**Backtesting Examples**:
-- `quick_backtest.py`: Fast backtest demonstration
-- `demo_backtest.py`: Detailed backtest with visualization
-- `adaptive_backtest_demo.py`: Adaptive strategy backtesting
+- **ProfessionalDashboard** (`src/cli/dashboard/professional.py`): Rich-based dashboard with real-time charts, used by the CLI `--dashboard` flag
+- **RealtimeDashboard** (`src/monitor/realtime_dashboard.py`): Dashboard with plotext charts for programmatic use
+- **SimplifiedDashboard** (`src/monitor/simplified_dashboard.py`): ASCII-based dashboard that works in any environment
 
-**Live Trading Examples**:
-- `live_trading_demo.py`: Continuous live trading simulation with momentum strategy
-
-**Real-time Dashboard Examples**:
-- `professional_realtime.py`: Professional dashboard with candlestick charts (23KB, most feature-rich)
-- `simple_realtime.py`: Simplified dashboard for quick monitoring (9KB)
-- `terminal_realtime.py`: Terminal-style display for minimal resource usage (11KB)
-- `realtime_demo.py`: Basic real-time trading demo (7KB)
-
-These are useful for understanding how to use the system programmatically without the CLI.
+These can be integrated into custom trading scripts or used via the CLI.
 
 ## Adding a New Exchange
 
@@ -519,155 +480,3 @@ The live trading logger (`src/cli/live_logger.py`) displays real-time trading in
 - Cache indicator calculations when possible
 - For high-frequency strategies, consider using Redis for state management
 
-## Available Skills
-
-This repository includes custom Claude Code skills for specialized workflows. Use the Skill tool to invoke them.
-
-### trading-feature-delivery
-
-**Usage**: `/trading-feature-delivery` or invoke via Skill tool
-
-**Purpose**: Implement or modify features in this Python trading system with safe integration across data feeds, strategy signals, execution, portfolio updates, and risk controls.
-
-**When to use**:
-- Adding new functionality to the trading system
-- Fixing bugs in existing modules
-- Refactoring code under `src/` while preserving runtime behavior
-- Modifying event flow, order execution, or risk guardrails
-
-**Workflow**:
-1. Maps the request to relevant modules using architecture notes
-2. Identifies data-flow edges (signal → order → fill → portfolio → risk events)
-3. Implements minimal, cohesive edits in the owning package
-4. Validates behavior with targeted checks
-5. Summarizes changes, commands run, and any unresolved risks
-
-**Engineering Rules**:
-- Preserves Decimal-based money math for prices, balances, and quantity
-- Keeps event payload contracts compatible with `src/core/event.py`
-- Adds or updates tests for behavioral changes
-- Prefers small patches and explicit failure handling
-
-**References**:
-- `skills/trading-feature-delivery/references/module-map.md`: Module ownership and integration points
-- `skills/trading-feature-delivery/references/verification.md`: Command-level validation
-
-### project-code-review
-
-**Usage**: `/project-code-review` or invoke via Skill tool
-
-**Purpose**: Perform structured code reviews for this Python trading repository with severity-ranked findings, concrete file/line references, and test-risk analysis.
-
-**When to use**:
-- Reviewing changes in `src/`, `scripts/`, `config/`
-- Auditing trading, risk, data-feed, or backtest behavior
-- Checking for behavior regressions, runtime failures, and missing test coverage
-- Before committing critical changes to order execution or risk management
-
-**Workflow**:
-1. Collects evidence by running available checks
-2. Inspects touched modules and their direct call chain
-3. Identifies findings prioritized by severity (high, medium, low)
-4. Checks test adequacy for changed behavior
-5. Reports findings with file:line references, impact, and fix direction
-
-**Review Rules**:
-- Prioritizes concrete defects over style-only nits
-- Treats order state consistency, fill-price correctness, and stop-loss logic as high-priority
-- States explicitly when no findings are found
-- Focuses on issues that can lose money, hide risk events, or break order lifecycle consistency
-
-**References**:
-- `skills/project-code-review/references/review-checklist.md`: Command sequence and risk-focused hotspots
-
-## Context Management for Long Sessions
-
-To prevent context window overflow during extended development sessions, follow these practices:
-
-### Automatic Context Compression
-
-Claude Code automatically compresses prior messages as the conversation approaches context limits. This means:
-- Your conversation is not limited by the context window
-- Older messages are summarized to preserve space
-- Recent context and critical information are retained
-- You can continue working indefinitely without manual intervention
-
-### Manual Context Management Strategies
-
-When working on complex tasks, use these strategies to keep context focused:
-
-**1. Use Subagents for Isolated Tasks**
-
-Delegate independent research or exploration to subagents using the Task tool:
-```python
-# Good: Use subagent for codebase exploration
-Task(subagent_type="Explore", prompt="Find all strategy implementations")
-
-# Good: Use subagent for complex multi-step tasks
-Task(subagent_type="general-purpose", prompt="Research and implement new indicator")
-```
-
-**2. Summarize Completed Work**
-
-After completing major milestones, create concise summaries:
-- Document key decisions in MEMORY.md (kept under 200 lines)
-- Update CLAUDE.md with new patterns or conventions
-- Create topic-specific memory files for detailed notes
-
-**3. Break Large Tasks into Phases**
-
-For ambitious projects:
-- Complete one phase fully before starting the next
-- Commit working code at phase boundaries
-- Document phase outcomes in git commit messages
-- Start fresh conversations for new phases if needed
-
-**4. Use Memory Files Effectively**
-
-Store persistent information in `/Users/zixuan.liu/.claude/projects/-Users-zixuan-liu-workspace-bitcoin-stock-trading-system/memory/`:
-- `MEMORY.md`: High-level patterns, conventions, and key decisions (always loaded, keep concise)
-- Topic files: `debugging.md`, `patterns.md`, `architecture.md` for detailed notes
-- Update memories when patterns are confirmed, remove outdated ones
-- Link from MEMORY.md to topic files for organization
-
-**5. Leverage Project Documentation**
-
-Instead of re-explaining context:
-- Reference CLAUDE.md for architecture and conventions
-- Point to README.md for project overview
-- Use inline code comments for complex logic
-- Maintain up-to-date docstrings for public APIs
-
-**6. Periodic Context Resets**
-
-For very long sessions (100+ messages):
-- Commit all working changes
-- Start a new conversation with clear objectives
-- Reference previous work via git history or documentation
-- Use `/init` to reload project context from CLAUDE.md
-
-### Best Practices for Context Efficiency
-
-**DO**:
-- Keep responses concise and focused
-- Use tool calls instead of verbose explanations
-- Reference file paths instead of pasting large code blocks
-- Delegate independent tasks to subagents
-- Update documentation instead of repeating information
-
-**DON'T**:
-- Paste entire files when discussing small changes
-- Repeat architectural explanations already in CLAUDE.md
-- Include verbose summaries of obvious actions
-- Duplicate information across messages
-- Keep debugging output in context after issues are resolved
-
-### Monitoring Context Usage
-
-Watch for these signs of context pressure:
-- Responses becoming slower
-- System reminders about context compression
-- Difficulty recalling earlier conversation details
-- Repeated questions about previously discussed topics
-
-When you notice these signs, consider starting a fresh conversation or using subagents for new tasks.

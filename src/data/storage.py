@@ -245,13 +245,14 @@ class DataStorage:
             conn.commit()
             logger.info(f"Deleted {cursor.rowcount} records")
 
-    def save_trades(self, trades: List[dict], session_id: str, strategy: str = ""):
-        """Save trade records
+    def save_trades(self, trades: List[dict], session_id: str, strategy: str = "", max_records: int = 20):
+        """Save trade records and keep only the most recent max_records
 
         Args:
             trades: List of trade dictionaries
             session_id: Session ID
             strategy: Strategy name
+            max_records: Maximum number of records to keep per session (default: 20)
         """
         if not trades:
             return
@@ -276,8 +277,20 @@ class DataStorage:
                     strategy
                 ))
 
+            # Keep only the most recent max_records trades for this session
+            cursor.execute("""
+                DELETE FROM trades
+                WHERE session_id = ?
+                AND id NOT IN (
+                    SELECT id FROM trades
+                    WHERE session_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                )
+            """, (session_id, session_id, max_records))
+
             conn.commit()
-            logger.info(f"Saved {len(trades)} trades for session {session_id}")
+            logger.info(f"Saved {len(trades)} trades for session {session_id}, keeping last {max_records} records")
 
     def save_equity_curve(self, equity_data: List[dict], session_id: str):
         """Save equity curve data
@@ -344,6 +357,42 @@ class DataStorage:
 
             conn.commit()
             logger.info(f"Saved backtest session {session_data['id']}")
+
+    def get_recent_trades(self, session_id: str, limit: int = 20) -> List[dict]:
+        """Get recent trade records
+
+        Args:
+            session_id: Session ID
+            limit: Maximum number of records to return
+
+        Returns:
+            List of trade dictionaries
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT timestamp, symbol, side, quantity, price,
+                       commission, portfolio_value, strategy
+                FROM trades
+                WHERE session_id = ?
+                ORDER BY timestamp DESC
+                LIMIT ?
+            """, (session_id, limit))
+
+            trades = []
+            for row in cursor.fetchall():
+                trades.append({
+                    'timestamp': row[0],
+                    'symbol': row[1],
+                    'side': row[2],
+                    'quantity': row[3],
+                    'price': row[4],
+                    'commission': row[5],
+                    'portfolio_value': row[6],
+                    'strategy': row[7]
+                })
+
+            return trades
 
     def load_trades(self, session_id: str) -> pd.DataFrame:
         """Load trade records

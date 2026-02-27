@@ -410,6 +410,7 @@ class SimplifiedDashboard:
         # Run with periodic refresh
         start_time = asyncio.get_event_loop().time()
         last_render = 0
+        interrupted = False
 
         try:
             while True:
@@ -429,10 +430,12 @@ class SimplifiedDashboard:
                 await asyncio.sleep(0.1)
 
         except KeyboardInterrupt:
-            print("\n\n停止可视化...")
+            interrupted = True
+            # 静默退出，不打印任何信息，不刷新UI
 
-        # Print summary
-        self.print_summary()
+        # Only print summary if not interrupted
+        if not interrupted:
+            self.print_summary()
 
     def add_log(self, message: str, level: str = "INFO"):
         """Add log entry
