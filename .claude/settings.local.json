@@ -38,7 +38,8 @@
       "Bash(git branch:*)",
       "Bash(git push:*)",
       "Bash(find:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(git rm:*)"
     ]
   }
 }
