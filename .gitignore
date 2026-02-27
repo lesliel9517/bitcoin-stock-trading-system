@@ -44,12 +44,8 @@ htmlcov/
 .env
 .env.local
 
-# Data
-data/market/*.csv
-data/market/*.parquet
-data/backtest/*.json
-data/logs/*.log
-data/db/*.db
+# Data - ignore entire data directory
+data/
 
 # Config (keep templates)
 config/exchanges.yaml
