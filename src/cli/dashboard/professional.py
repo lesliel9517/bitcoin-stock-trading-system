@@ -100,8 +100,8 @@ class ProfessionalDashboard:
         layout["left"].split_column(
             Layout(name="price_stats", size=5),
             Layout(name="period_tabs", size=3),
-            Layout(name="chart", ratio=2),           # 减小图表区比例
-            Layout(name="volume", size=4),
+            Layout(name="chart", ratio=1),           # 进一步减小图表区比例
+            Layout(name="volume", size=3),           # 减小成交量区高度
             Layout(name="logs", ratio=1)
         )
 
@@ -528,22 +528,26 @@ class ProfessionalDashboard:
 
             timeframe, limit = timeframe_map[range_key]
 
-            # 配置代理
-            proxies = {}
+            # 配置代理 - ccxt需要特殊的配置方式
+            exchange_config = {
+                'enableRateLimit': True,
+            }
+
             http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
             https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
 
-            if http_proxy:
-                proxies['http'] = http_proxy
-            if https_proxy:
-                proxies['https'] = https_proxy
+            # ccxt使用aiohttp，需要设置httpProxy和httpsProxy
+            if http_proxy or https_proxy:
+                proxy_url = https_proxy or http_proxy
+                exchange_config['proxies'] = {
+                    'http': proxy_url,
+                    'https': proxy_url,
+                }
+                # ccxt还需要这个配置
+                exchange_config['aiohttp_proxy'] = proxy_url
+                self.add_log(f"使用代理: {proxy_url}", "info")
 
             # 使用ccxt获取历史数据
-            exchange_config = {}
-            if proxies:
-                exchange_config['proxies'] = proxies
-                self.add_log(f"使用代理: {http_proxy or https_proxy}", "info")
-
             exchange = ccxt.binance(exchange_config)
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
 
