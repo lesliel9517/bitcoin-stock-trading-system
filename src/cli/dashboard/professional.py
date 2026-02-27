@@ -114,7 +114,7 @@ class ProfessionalDashboard:
 
         return Panel(
             Align.center(text),
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_black"
         )
 
@@ -163,7 +163,7 @@ class ProfessionalDashboard:
 
         return Panel(
             table,
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_black",
             padding=(1, 2)
         )
@@ -243,10 +243,10 @@ class ProfessionalDashboard:
 
         table.add_row("", "")
 
-        # 最近交易
+        # 最近交易（显示最近20条）
         if len(self.trade_history) > 0:
-            table.add_row("", "[bold bright_red]最近交易[/bold bright_red]")
-            for trade in list(self.trade_history)[-3:]:
+            table.add_row("", "[bold bright_red]最近交易 (最近20条)[/bold bright_red]")
+            for trade in list(self.trade_history)[-20:]:  # 显示最近20条
                 if trade['type'] == 'buy':
                     qty = trade.get('quantity', 0)
                     table.add_row(
@@ -266,7 +266,7 @@ class ProfessionalDashboard:
         return Panel(
             table,
             title="[bold bright_green]实时数据[/bold bright_green]",
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_green",
             padding=(1, 1)
         )
@@ -277,7 +277,7 @@ class ProfessionalDashboard:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
                 title="[bright_cyan]价格走势[/bright_cyan]",
-                style="white on #2a2a2a",
+                style="",  # 使用终端默认背景
                 border_style="bright_cyan"
             )
 
@@ -357,7 +357,7 @@ class ProfessionalDashboard:
         return Panel(
             chart_text,
             title="[bright_cyan]价格走势[/bright_cyan]",
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_cyan",
             padding=(0, 1)
         )
@@ -368,7 +368,7 @@ class ProfessionalDashboard:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
                 title="[bright_yellow]成交量[/bright_yellow]",
-                style="white on #2a2a2a",
+                style="",  # 使用终端默认背景
                 border_style="bright_yellow"
             )
 
@@ -401,7 +401,7 @@ class ProfessionalDashboard:
         return Panel(
             volume_text,
             title="[bright_yellow]成交量[/bright_yellow]",
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_yellow",
             padding=(0, 1)
         )
@@ -412,7 +412,7 @@ class ProfessionalDashboard:
             return Panel(
                 Align.center(Text("等待系统事件...", style="dim")),
                 title="[bright_yellow]实时日志[/bright_yellow]",
-                style="white on #2a2a2a",
+                style="",  # 使用终端默认背景
                 border_style="bright_yellow"
             )
 
@@ -440,7 +440,7 @@ class ProfessionalDashboard:
         return Panel(
             log_text,
             title="[bright_yellow]实时日志[/bright_yellow]",
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="bright_yellow",
             padding=(0, 1)
         )
@@ -458,7 +458,7 @@ class ProfessionalDashboard:
 
         return Panel(
             Align.center(text),
-            style="white on #2a2a2a",
+            style="",  # 使用终端默认背景
             border_style="dim"
         )
 
