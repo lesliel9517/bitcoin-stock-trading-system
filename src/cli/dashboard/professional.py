@@ -199,6 +199,12 @@ class ProfessionalDashboard:
             if i < len(self.time_ranges) - 1:
                 text.append("  ", style="dim")
 
+        return Panel(
+            Align.center(text),
+            style="",  # 使用终端默认背景
+            border_style="dim"
+        )
+
     def render_info_panel(self) -> Panel:
         """渲染右侧信息面板：账户信息 + 统计 + 历史交易"""
         table = Table.grid(padding=(0, 1))
