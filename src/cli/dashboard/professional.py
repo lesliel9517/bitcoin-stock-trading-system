@@ -573,6 +573,8 @@ class ProfessionalDashboard:
 
         return layout
 
+        return layout
+
     # ========== 数据更新方法 ==========
 
     def update_price(self, price: float, volume: float = 0):
