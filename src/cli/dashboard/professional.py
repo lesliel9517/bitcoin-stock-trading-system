@@ -192,36 +192,6 @@ class ProfessionalDashboard:
             if i < len(self.time_ranges) - 1:
                 text.append("  ", style="dim")
 
-        return Panel(
-            Align.center(text),
-            style="",  # 使用终端默认背景
-            border_style="dim"
-        )
-        col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="dim")
-        col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="dim")
-
-        # 右侧第二列：统计字段
-        col2 = Text()
-        col2.append(f"最低  ${self.low_24h:,.2f}\n", style="dim")
-        col2.append(f"昨收  ${self.prev_close:,.2f}\n", style="dim")
-
-        # 24H涨跌
-        change_24h_color = "green" if self.price_change >= 0 else "red"
-        col2.append(
-            f"24H涨跌  {change_sign}{self.price_change_pct:.2f}%\n",
-            style=change_24h_color
-        )
-        col2.append(f"振幅  {self._calculate_amplitude():.2f}%", style="magenta")
-
-        table.add_row(left_content, col1, col2)
-
-        return Panel(
-            table,
-            style="on #1a1a1a",
-            border_style="dim",
-            padding=(1, 2)
-        )
-
     def render_info_panel(self) -> Panel:
         """渲染右侧信息面板：账户信息 + 统计 + 历史交易"""
         table = Table.grid(padding=(0, 1))
