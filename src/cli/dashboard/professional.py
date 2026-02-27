@@ -423,7 +423,7 @@ class ProfessionalDashboard:
         # Recent trades with PnL
         if len(self.trade_history) > 0:
             table.add_row("", "[bold red]最近交易[/bold red]")
-            for trade in self.trade_history[-3:]:
+            for trade in list(self.trade_history)[-3:]:  # Convert deque to list for slicing
                 if trade['type'] == 'buy':
                     qty = trade.get('quantity', 0)
                     table.add_row(
