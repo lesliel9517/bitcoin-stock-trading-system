@@ -1,4 +1,0 @@
-interface:
-  display_name: "Trading Feature Delivery"
-  short_description: "Implement features in this repo safely and consistently"
-  default_prompt: "Implement a feature in this repository with tests and verification."
