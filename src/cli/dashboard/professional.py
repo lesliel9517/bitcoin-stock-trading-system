@@ -38,6 +38,12 @@ class ProfessionalDashboard:
         # Real-time logs (all events)
         self.logs = deque(maxlen=50)  # Keep last 50 log entries
 
+        # Additional market data
+        self.open_price = 0  # Today's opening price
+        self.prev_close = 0  # Yesterday's close
+        self.all_time_high = 0  # Historical highest price
+        self.current_time = ""  # Trading time display
+
         # Stats
         self.current_price = 0
         self.price_change = 0
@@ -56,7 +62,7 @@ class ProfessionalDashboard:
         # Profit/Loss tracking
         self.total_profit = 0  # 累积盈利
         self.total_loss = 0    # 累积亏损
-        self.trade_history = []  # 每次交易的详细记录
+        self.trade_history = deque(maxlen=20)  # 保留最近20条交易记录
 
         # Daily baseline price (for calculating daily change)
         self.price_24h_start = 0  # Today's opening price at 00:00

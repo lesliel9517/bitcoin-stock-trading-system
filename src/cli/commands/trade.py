@@ -80,7 +80,7 @@ def start(ctx, strategy, symbol, mode, capital, duration, update_interval, initi
             _run_with_trading_engine(strategy, symbol, mode, capital, duration, update_interval, initial_price, dashboard)
 
     except KeyboardInterrupt:
-        click.echo("\n\n交易已停止")
+        pass  # 静默退出，不打印任何信息
     except Exception as e:
         # Log full traceback to file
         import traceback
@@ -110,6 +110,7 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
     from pathlib import Path
     from datetime import datetime
     import traceback
+    import uuid
 
     # Disable standard logging to console
     logging.getLogger().handlers = []
@@ -137,8 +138,13 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
     from ...strategies.examples.adaptive_strategy import AdaptiveStrategy
     from ...core.event import EventType
     from ..dashboard import ProfessionalDashboard
+    from ...data.storage import DataStorage
     from rich.console import Console
     from rich.live import Live
+
+    # Initialize database storage
+    storage = DataStorage()
+    session_id = str(uuid.uuid4())
 
     async def run_dashboard():
         console = Console()
@@ -279,6 +285,18 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
                                 portfolio.cash -= cost
                                 position = quantity
                                 entry_price = Decimal(str(price))
+
+                                # Save trade to database
+                                storage.save_trades([{
+                                    'timestamp': datetime.now(),
+                                    'symbol': symbol,
+                                    'side': 'BUY',
+                                    'quantity': float(quantity),
+                                    'price': float(price),
+                                    'commission': 0.0,
+                                    'portfolio_value': float(portfolio.get_total_value())
+                                }], session_id, 'adaptive')
+
                                 dashboard.add_log(f"✓ 执行买入: {float(quantity):.6f} BTC @ ${price:,.2f}", "trade")
                                 dashboard.add_trade('buy', price, quantity=float(quantity))
 
@@ -288,6 +306,18 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
                                 dashboard.add_log(f"✓ 执行卖出: {float(position):.6f} BTC @ ${price:,.2f}", "trade")
                                 portfolio.update_position(symbol, -position, Decimal(str(price)))
                                 portfolio.cash += sell_value
+
+                                # Save trade to database
+                                storage.save_trades([{
+                                    'timestamp': datetime.now(),
+                                    'symbol': symbol,
+                                    'side': 'SELL',
+                                    'quantity': float(position),
+                                    'price': float(price),
+                                    'commission': 0.0,
+                                    'portfolio_value': float(portfolio.get_total_value())
+                                }], session_id, 'adaptive')
+
                                 dashboard.add_trade('sell', price, float(entry_price) if entry_price else None, float(position))
                                 position = Decimal(0)
                                 entry_price = None
