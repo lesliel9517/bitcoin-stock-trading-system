@@ -72,81 +72,81 @@ class ProfessionalDashboard:
         self.time_ranges = ["1D", "5日", "日K", "周K", "月K", "年K"]
 
     def create_layout(self) -> Layout:
-        """创建纵向布局"""
+        """创建布局：左侧图表 + 右侧信息"""
         layout = Layout()
 
-        # 纵向分割：顶部标题栏 + 主体内容 + 底部操作栏
+        # 顶部标题栏 + 主体 + 底部快捷键
         layout.split_column(
             Layout(name="header", size=3),
             Layout(name="body", ratio=1),
-            Layout(name="footer", size=3)
+            Layout(name="footer", size=1)
         )
 
-        # 主体内容纵向分割
-        layout["body"].split_column(
-            Layout(name="price_stats", size=8),      # 价格统计区
-            Layout(name="period_tabs", size=3),      # 周期Tab
-            Layout(name="chart", ratio=3),           # 主图表区
-            Layout(name="volume", size=6),           # 成交量柱
-            Layout(name="indicators", size=3),       # 技术指标
-            Layout(name="logs", ratio=1)             # 日志区
+        # 主体：左侧图表 + 右侧信息面板
+        layout["body"].split_row(
+            Layout(name="left", ratio=2),
+            Layout(name="right", ratio=1)
+        )
+
+        # 左侧：价格统计 + 图表 + 成交量 + 日志
+        layout["left"].split_column(
+            Layout(name="price_stats", size=6),
+            Layout(name="chart", ratio=3),
+            Layout(name="volume", size=5),
+            Layout(name="logs", ratio=1)
         )
 
         return layout
 
     def render_header(self) -> Panel:
-        """渲染顶部标题栏：返回 + 标题 + 搜索/收藏 + 时间"""
+        """渲染顶部标题栏：标题 + 时间"""
         text = Text()
 
-        # 左侧：返回按钮 + 标题
-        text.append("← ", style="dim")
-        text.append("BTC 比特币", style="bold cyan")
-        text.append("▼", style="dim")
+        # 左侧：标题
+        text.append("BTC-USD 实时交易", style="bold cyan")
 
         # 中间填充
-        text.append("  " * 10)
+        text.append("  " * 15)
 
-        # 右侧：搜索/收藏图标
-        text.append("🔍 ", style="dim")
-        text.append("★", style="yellow")
-
-        # 第二行：交易时间
+        # 右侧：时间
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        time_text = Text(f"\n{current_time}", style="dim", justify="center")
-
-        combined = Text()
-        combined.append(text)
-        combined.append(time_text)
+        text.append(current_time, style="dim")
 
         return Panel(
-            Align.center(combined),
-            style="on #1a1a1a",
-            border_style="dim"
+            Align.center(text),
+            style="white on #2a2a2a",
+            border_style="bright_black"
         )
 
     def render_price_stats(self) -> Panel:
-        """渲染价格统计区：左侧大号价格 + 右侧统计字段"""
-        # 创建表格布局
-        table = Table.grid(padding=(0, 2))
-        table.add_column(justify="left", ratio=2)   # 左侧价格区
-        table.add_column(justify="left", ratio=1)   # 右侧第一列
-        table.add_column(justify="left", ratio=1)   # 右侧第二列
+        """渲染价格统计区：当前价格 + 涨跌 + 24h统计"""
+        table = Table.grid(padding=(0, 1))
+        table.add_column(justify="left")
+        table.add_column(justify="right")
 
-        # 左侧：大号当前价格
-        price_color = "green" if self.price_change >= 0 else "red"
+        # 当前价格
+        price_color = "bright_green" if self.price_change >= 0 else "bright_red"
         change_sign = "+" if self.price_change >= 0 else ""
 
-        left_content = Text()
-        left_content.append(f"${self.current_price:,.2f}\n", style=f"bold {price_color} on #1a1a1a")
-        left_content.append(
-            f"{change_sign}${self.price_change:,.2f}  {change_sign}{self.price_change_pct:.2f}%",
-            style=f"{price_color}"
-        )
+        price_text = Text()
+        price_text.append(f"${self.current_price:,.2f}", style=f"bold {price_color}")
+        price_text.append(f"  {change_sign}${self.price_change:,.2f} ({change_sign}{self.price_change_pct:.2f}%)", style=price_color)
 
-        # 右侧第一列：统计字段
-        col1 = Text()
-        col1.append(f"最高  ${self.high_24h:,.2f}\n", style="dim")
-        col1.append(f"今开  ${self.open_price:,.2f}\n", style="dim")
+        # 24h统计
+        stats_text = Text()
+        stats_text.append(f"24H高: ${self.high_24h:,.2f}  ", style="bright_white")
+        stats_text.append(f"24H低: ${self.low_24h:,.2f}  ", style="bright_white")
+        stats_text.append(f"成交量: {self._format_volume(self.volume_24h)}", style="bright_cyan")
+
+        table.add_row(price_text, "")
+        table.add_row(stats_text, "")
+
+        return Panel(
+            table,
+            style="white on #2a2a2a",
+            border_style="bright_black",
+            padding=(0, 1)
+        )
         col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="dim")
         col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="dim")
 
@@ -172,41 +172,97 @@ class ProfessionalDashboard:
             padding=(1, 2)
         )
 
-    def render_period_tabs(self) -> Panel:
-        """渲染周期Tab：1D/5日/日K/周K等"""
-        text = Text()
+    def render_info_panel(self) -> Panel:
+        """渲染右侧信息面板：账户信息 + 统计 + 历史交易"""
+        table = Table.grid(padding=(0, 1))
+        table.add_column(style="bright_white", justify="left")
+        table.add_column(style="bold bright_white", justify="right")
 
-        for i, period in enumerate(self.time_ranges):
-            if period == self.time_range:
-                # 当前选中的周期：高亮显示
-                text.append(f" {period} ", style="bold yellow on #333333")
-            else:
-                text.append(f" {period} ", style="dim")
+        # 账户信息
+        table.add_row("", "[bold bright_yellow]账户信息[/bold bright_yellow]")
+        table.add_row("总资产", f"${self.equity:,.2f}")
+        table.add_row("现金", f"${self.cash_balance:,.2f}")
 
-            # 添加分隔符
-            if i < len(self.time_ranges) - 1:
-                text.append(" ", style="dim")
+        # 盈亏
+        pnl_color = "bright_green" if self.pnl >= 0 else "bright_red"
+        pnl_sign = "+" if self.pnl >= 0 else ""
+        table.add_row("盈亏", f"[{pnl_color}]{pnl_sign}${self.pnl:,.2f}[/{pnl_color}]")
+        table.add_row("收益率", f"[{pnl_color}]{pnl_sign}{self.pnl_pct:.2f}%[/{pnl_color}]")
+
+        table.add_row("", "")
+
+        # 收益统计
+        table.add_row("", "[bold bright_green]收益统计[/bold bright_green]")
+        table.add_row("累积盈利", f"[bright_green]+${self.total_profit:,.2f}[/bright_green]")
+        table.add_row("累积亏损", f"[bright_red]-${self.total_loss:,.2f}[/bright_red]")
+        net_pnl = self.total_profit - self.total_loss
+        net_color = "bright_green" if net_pnl >= 0 else "bright_red"
+        net_sign = "+" if net_pnl >= 0 else ""
+        table.add_row("净收益", f"[{net_color}]{net_sign}${net_pnl:,.2f}[/{net_color}]")
+
+        table.add_row("", "")
+
+        # 持仓信息
+        table.add_row("", "[bold bright_cyan]持仓信息[/bold bright_cyan]")
+        pos_color = "bright_green" if "持仓" in self.position else "dim"
+        table.add_row("状态", f"[{pos_color}]{self.position}[/{pos_color}]")
+
+        table.add_row("", "")
+
+        # 交易统计
+        table.add_row("", "[bold bright_magenta]交易统计[/bold bright_magenta]")
+        table.add_row("交易次数", str(self.total_trades))
+        table.add_row("胜率", f"{self.win_rate:.1f}%")
+
+        table.add_row("", "")
+
+        # 市场状态
+        table.add_row("", "[bold bright_white]市场状态[/bold bright_white]")
+        table.add_row("趋势", self.market_regime)
+        table.add_row("波动", self.volatility)
+
+        table.add_row("", "")
+
+        # 最近交易
+        if len(self.trade_history) > 0:
+            table.add_row("", "[bold bright_red]最近交易[/bold bright_red]")
+            for trade in list(self.trade_history)[-3:]:
+                if trade['type'] == 'buy':
+                    qty = trade.get('quantity', 0)
+                    table.add_row(
+                        "[bright_blue]买入[/bright_blue]",
+                        f"${trade['price']:.2f} × {qty:.4f}"
+                    )
+                else:
+                    qty = trade.get('quantity', 0)
+                    pnl = trade.get('pnl', 0)
+                    pnl_color = "bright_green" if pnl > 0 else "bright_red"
+                    pnl_sign = "+" if pnl >= 0 else ""
+                    table.add_row(
+                        f"[{pnl_color}]卖出[/{pnl_color}]",
+                        f"${trade['price']:.2f} × {qty:.4f} [{pnl_color}]{pnl_sign}${pnl:.2f}[/{pnl_color}]"
+                    )
 
         return Panel(
-            Align.center(text),
-            style="on #1a1a1a",
-            border_style="dim"
+            table,
+            title="[bold bright_green]实时数据[/bold bright_green]",
+            style="white on #2a2a2a",
+            border_style="bright_green",
+            padding=(1, 1)
         )
 
     def render_chart(self) -> Panel:
-        """渲染主图表区：蓝色价格线 + 橙色均线 + 刻度"""
+        """渲染主图表区：价格线 + 均线"""
         if len(self.prices) < 2:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
-                title="[cyan]价格走势[/cyan]",
-                style="on #1a1a1a",
-                border_style="cyan"
+                title="[bright_cyan]价格走势[/bright_cyan]",
+                style="white on #2a2a2a",
+                border_style="bright_cyan"
             )
 
-        # 获取数据
         prices_list = list(self.prices)[-60:]
         ma_short_list = list(self.ma_short)[-60:] if len(self.ma_short) > 0 else []
-        ma_long_list = list(self.ma_long)[-60:] if len(self.ma_long) > 0 else []
 
         min_p = min(prices_list)
         max_p = max(prices_list)
@@ -222,7 +278,7 @@ class ProfessionalDashboard:
         for i, price in enumerate(prices_list):
             row = int(((price - min_p) / range_p) * (chart_height - 1))
             row = chart_height - 1 - row
-            chart[row][i] = "[blue]●[/blue]"
+            chart[row][i] = "[bright_blue]●[/bright_blue]"
 
             # 连接线
             if i > 0:
@@ -233,11 +289,11 @@ class ProfessionalDashboard:
                 if prev_row < row:
                     for r in range(prev_row + 1, row):
                         if chart[r][i] == " ":
-                            chart[r][i] = "[blue]│[/blue]"
+                            chart[r][i] = "[bright_blue]│[/bright_blue]"
                 elif prev_row > row:
                     for r in range(row + 1, prev_row):
                         if chart[r][i] == " ":
-                            chart[r][i] = "[blue]│[/blue]"
+                            chart[r][i] = "[bright_blue]│[/bright_blue]"
 
         # 绘制均线（橙色）
         if len(ma_short_list) == len(prices_list):
@@ -248,54 +304,52 @@ class ProfessionalDashboard:
                     if 0 <= row < chart_height and chart[row][i] == " ":
                         chart[row][i] = "[yellow]·[/yellow]"
 
-        # 构建图表字符串，添加左侧价格刻度和右侧涨跌幅刻度
-        lines = []
-        baseline_price = self.price_24h_start if self.price_24h_start > 0 else self.current_price
+        # 标记交易点
+        for trade in self.trades[-10:]:
+            if 0 <= trade['index'] < len(self.prices):
+                idx = trade['index'] - (len(self.prices) - len(prices_list))
+                if 0 <= idx < len(prices_list):
+                    price = prices_list[idx]
+                    row = int(((price - min_p) / range_p) * (chart_height - 1))
+                    row = chart_height - 1 - row
+                    if trade['side'] == 'buy':
+                        chart[row][idx] = "[bright_green]B[/bright_green]"
+                    else:
+                        chart[row][idx] = "[bright_red]S[/bright_red]"
 
+        # 构建图表字符串
+        lines = []
         for row_idx, row in enumerate(chart):
-            # 左侧价格刻度（每3行显示一次）
             if row_idx % 3 == 0:
                 price_at_row = max_p - (range_p * row_idx / (chart_height - 1))
                 left_label = f"${price_at_row:>8.2f} │"
             else:
                 left_label = " " * 11 + "│"
 
-            # 右侧涨跌幅刻度（每3行显示一次）
-            if row_idx % 3 == 0:
-                price_at_row = max_p - (range_p * row_idx / (chart_height - 1))
-                change_pct = ((price_at_row - baseline_price) / baseline_price * 100) if baseline_price > 0 else 0
-                change_sign = "+" if change_pct >= 0 else ""
-                right_label = f"│ {change_sign}{change_pct:>5.2f}%"
-            else:
-                right_label = "│"
+            lines.append(left_label + "".join(row))
 
-            lines.append(left_label + "".join(row) + right_label)
-
-        # 添加底部基线
-        lines.append(" " * 11 + "└" + "─" * chart_width + "┘")
-
-        # 添加图例
+        lines.append(" " * 11 + "└" + "─" * chart_width)
         lines.append("")
-        lines.append("[dim][blue]●[/blue]=价格线  [yellow]·[/yellow]=均线[/dim]")
+        lines.append("[dim][bright_blue]●[/bright_blue]=价格  [yellow]·[/yellow]=均线  [bright_green]B[/bright_green]=买入  [bright_red]S[/bright_red]=卖出[/dim]")
 
         chart_text = "\n".join(lines)
 
         return Panel(
             chart_text,
-            title="[cyan]价格走势[/cyan]",
-            style="on #1a1a1a",
-            border_style="cyan",
+            title="[bright_cyan]价格走势[/bright_cyan]",
+            style="white on #2a2a2a",
+            border_style="bright_cyan",
             padding=(0, 1)
         )
 
     def render_volume(self) -> Panel:
-        """渲染成交量柱状图：红绿柱"""
+        """渲染成交量柱状图"""
         if len(self.volumes) < 2:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
-                title="[yellow]成交量[/yellow]",
-                style="on #1a1a1a",
-                border_style="yellow"
+                title="[bright_yellow]成交量[/bright_yellow]",
+                style="white on #2a2a2a",
+                border_style="bright_yellow"
             )
 
         volumes_list = list(self.volumes)[-60:]
@@ -303,8 +357,7 @@ class ProfessionalDashboard:
 
         max_vol = max(volumes_list) if volumes_list else 1
 
-        # 创建柱状图（高度5行）
-        chart_height = 5
+        chart_height = 4
         chart_width = len(volumes_list)
 
         lines = []
@@ -314,11 +367,10 @@ class ProfessionalDashboard:
 
             for i, vol in enumerate(volumes_list):
                 if vol >= threshold:
-                    # 根据价格涨跌决定颜色
                     if i > 0 and prices_list[i] >= prices_list[i-1]:
-                        line_chars.append("[green]█[/green]")
+                        line_chars.append("[bright_green]█[/bright_green]")
                     else:
-                        line_chars.append("[red]█[/red]")
+                        line_chars.append("[bright_red]█[/bright_red]")
                 else:
                     line_chars.append(" ")
 
@@ -328,32 +380,10 @@ class ProfessionalDashboard:
 
         return Panel(
             volume_text,
-            title="[yellow]成交量[/yellow]",
-            style="on #1a1a1a",
-            border_style="yellow",
+            title="[bright_yellow]成交量[/bright_yellow]",
+            style="white on #2a2a2a",
+            border_style="bright_yellow",
             padding=(0, 1)
-        )
-
-    def render_indicators(self) -> Panel:
-        """渲染技术指标行：KDJ等数值"""
-        text = Text()
-
-        # 示例技术指标
-        text.append("MA(5): ", style="dim")
-        text.append(f"{self.ma_short[-1] if len(self.ma_short) > 0 else 0:.2f}", style="yellow")
-        text.append("  ", style="dim")
-
-        text.append("MA(10): ", style="dim")
-        text.append(f"{self.ma_long[-1] if len(self.ma_long) > 0 else 0:.2f}", style="yellow")
-        text.append("  ", style="dim")
-
-        text.append("KDJ: ", style="dim")
-        text.append("K:50.2 D:48.5 J:53.6", style="cyan")
-
-        return Panel(
-            Align.center(text),
-            style="on #1a1a1a",
-            border_style="dim"
         )
 
     def render_logs(self) -> Panel:
@@ -361,25 +391,25 @@ class ProfessionalDashboard:
         if not self.logs:
             return Panel(
                 Align.center(Text("等待系统事件...", style="dim")),
-                title="[yellow]实时日志[/yellow]",
-                style="on #1a1a1a",
-                border_style="yellow"
+                title="[bright_yellow]实时日志[/bright_yellow]",
+                style="white on #2a2a2a",
+                border_style="bright_yellow"
             )
 
         lines = []
-        for log in list(self.logs)[-8:]:
+        for log in list(self.logs)[-6:]:
             timestamp = log['time']
             message = log['message']
             log_type = log['type']
 
             if log_type == "trade":
-                color = "blue" if "买入" in message else ("green" if "盈利" in message else "red")
+                color = "bright_blue" if "买入" in message else ("bright_green" if "盈利" in message else "bright_red")
             elif log_type == "signal":
-                color = "yellow"
+                color = "bright_yellow"
             elif log_type == "market":
-                color = "cyan"
+                color = "bright_cyan"
             elif log_type == "error":
-                color = "red"
+                color = "bright_red"
             else:
                 color = "white"
 
@@ -389,33 +419,26 @@ class ProfessionalDashboard:
 
         return Panel(
             log_text,
-            title="[yellow]实时日志[/yellow]",
-            style="on #1a1a1a",
-            border_style="yellow",
+            title="[bright_yellow]实时日志[/bright_yellow]",
+            style="white on #2a2a2a",
+            border_style="bright_yellow",
             padding=(0, 1)
         )
 
     def render_footer(self) -> Panel:
-        """渲染底部操作栏：交易按钮 + 功能图标"""
+        """渲染底部快捷键提示"""
         text = Text()
-
-        # 左侧：橙色交易按钮
-        text.append(" [ ", style="dim")
-        text.append("交易", style="bold yellow on #ff6600")
-        text.append(" ] ", style="dim")
-
-        # 中间填充
-        text.append("  " * 5)
-
-        # 右侧：功能图标
-        text.append("📊 ", style="dim")
-        text.append("📈 ", style="dim")
-        text.append("⚙️ ", style="dim")
-        text.append("ℹ️", style="dim")
+        text.append("快捷键: ", style="dim")
+        text.append("Ctrl+C", style="bright_white")
+        text.append("=退出  ", style="dim")
+        text.append("Space", style="bright_white")
+        text.append("=暂停  ", style="dim")
+        text.append("R", style="bright_white")
+        text.append("=刷新", style="dim")
 
         return Panel(
             Align.center(text),
-            style="on #1a1a1a",
+            style="white on #2a2a2a",
             border_style="dim"
         )
 
@@ -425,11 +448,10 @@ class ProfessionalDashboard:
 
         layout["header"].update(self.render_header())
         layout["price_stats"].update(self.render_price_stats())
-        layout["period_tabs"].update(self.render_period_tabs())
         layout["chart"].update(self.render_chart())
         layout["volume"].update(self.render_volume())
-        layout["indicators"].update(self.render_indicators())
         layout["logs"].update(self.render_logs())
+        layout["right"].update(self.render_info_panel())
         layout["footer"].update(self.render_footer())
 
         return layout
