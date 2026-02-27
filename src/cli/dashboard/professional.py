@@ -128,50 +128,53 @@ class ProfessionalDashboard:
         )
 
     def render_price_stats(self) -> Panel:
-        """渲染价格统计区：左侧大号价格 + 右侧市场指标"""
-        table = Table.grid(padding=(0, 2))
-        table.add_column(justify="left", ratio=2)  # 左侧大号价格
-        table.add_column(justify="left", ratio=1)  # 右侧第一列
-        table.add_column(justify="left", ratio=1)  # 右侧第二列
-
-        # 左侧：大号当前价格 + 涨跌
+        """渲染价格统计区：顶部大号价格 + 下方两列统计字段"""
+        # 大号当前价格
         price_color = "bright_green" if self.price_change >= 0 else "bright_red"
         change_sign = "+" if self.price_change >= 0 else ""
 
-        left_content = Text()
-        left_content.append(f"${self.current_price:,.2f}\n", style=f"bold {price_color}")
-        left_content.append(
-            f"{change_sign}${self.price_change:,.2f}  {change_sign}{self.price_change_pct:.2f}%",
+        price_text = Text()
+        price_text.append(f"${self.current_price:,.2f}  ", style=f"bold {price_color}")
+        price_text.append(
+            f"{change_sign}${self.price_change:,.2f} ({change_sign}{self.price_change_pct:.2f}%)",
             style=f"{price_color}"
         )
 
-        # 右侧第一列：市场指标
+        # 两列统计字段
+        stats_table = Table.grid(padding=(0, 3))
+        stats_table.add_column(justify="left")  # 第一列
+        stats_table.add_column(justify="left")  # 第二列
+
+        # 第一列：最高、今开、成交量、历史最高
         col1 = Text()
         col1.append(f"最高  ${self.high_24h:,.2f}\n", style="bright_white")
         col1.append(f"今开  ${self.open_price:,.2f}\n", style="bright_white")
         col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="bright_cyan")
         col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="bright_yellow")
 
-        # 右侧第二列：市场指标
+        # 第二列：最低、昨收、24H涨跌、振幅
         col2 = Text()
         col2.append(f"最低  ${self.low_24h:,.2f}\n", style="bright_white")
         col2.append(f"昨收  ${self.prev_close:,.2f}\n", style="bright_white")
 
-        # 24H涨跌
         change_24h_color = "bright_green" if self.price_change >= 0 else "bright_red"
         col2.append(
             f"24H涨跌  {change_sign}{self.price_change_pct:.2f}%\n",
             style=change_24h_color
         )
 
-        # 振幅
         amplitude = self._calculate_amplitude()
         col2.append(f"振幅  {amplitude:.2f}%", style="bright_magenta")
 
-        table.add_row(left_content, col1, col2)
+        stats_table.add_row(col1, col2)
+
+        # 组合：价格在上，统计字段在下
+        content = Text()
+        content.append(price_text)
+        content.append("\n\n")
 
         return Panel(
-            table,
+            Align.left(content) + "\n" + stats_table,
             style="",  # 使用终端默认背景
             border_style="bright_black",
             padding=(1, 2)
