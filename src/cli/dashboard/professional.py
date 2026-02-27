@@ -68,8 +68,16 @@ class ProfessionalDashboard:
         self.volatility = "正常"
 
         # Time range
-        self.time_range = "1D"  # 1D, 5D, 日K, 周K, 月K, 年K
+        self.time_range = "1D"  # 1D, 5日, 日K, 周K, 月K, 年K
         self.time_ranges = ["1D", "5日", "日K", "周K", "月K", "年K"]
+        self.time_range_data = {
+            '1D': {'prices': deque(maxlen=120), 'timestamps': deque(maxlen=120), 'volumes': deque(maxlen=120)},
+            '5日': {'prices': [], 'timestamps': [], 'volumes': []},
+            '日K': {'prices': [], 'timestamps': [], 'volumes': []},
+            '周K': {'prices': [], 'timestamps': [], 'volumes': []},
+            '月K': {'prices': [], 'timestamps': [], 'volumes': []},
+            '年K': {'prices': [], 'timestamps': [], 'volumes': []}
+        }
 
     def create_layout(self) -> Layout:
         """创建布局：左侧图表 + 右侧信息"""
@@ -88,9 +96,10 @@ class ProfessionalDashboard:
             Layout(name="right", ratio=1)
         )
 
-        # 左侧：价格统计 + 图表 + 成交量 + 日志
+        # 左侧：价格统计 + 周期Tab + 图表 + 成交量 + 日志
         layout["left"].split_column(
             Layout(name="price_stats", size=6),
+            Layout(name="period_tabs", size=3),
             Layout(name="chart", ratio=3),
             Layout(name="volume", size=5),
             Layout(name="logs", ratio=1)
@@ -166,6 +175,27 @@ class ProfessionalDashboard:
             style="",  # 使用终端默认背景
             border_style="bright_black",
             padding=(1, 2)
+        )
+
+    def render_period_tabs(self) -> Panel:
+        """渲染周期Tab：1D/5日/日K/周K/月K/年K"""
+        text = Text()
+
+        for i, period in enumerate(self.time_ranges):
+            if period == self.time_range:
+                # 当前选中的周期：高亮显示
+                text.append(f" {period} ", style="bold bright_yellow on bright_black")
+            else:
+                text.append(f" {period} ", style="dim")
+
+            # 添加分隔符
+            if i < len(self.time_ranges) - 1:
+                text.append("  ", style="dim")
+
+        return Panel(
+            Align.center(text),
+            style="",  # 使用终端默认背景
+            border_style="dim"
         )
         col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="dim")
         col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="dim")
@@ -273,16 +303,24 @@ class ProfessionalDashboard:
 
     def render_chart(self) -> Panel:
         """渲染主图表区：价格线 + 均线"""
-        if len(self.prices) < 2:
+        # 根据当前周期选择数据源
+        if self.time_range == '1D':
+            # 实时数据
+            prices_list = list(self.prices)[-60:]
+            ma_short_list = list(self.ma_short)[-60:] if len(self.ma_short) > 0 else []
+        else:
+            # 历史数据
+            range_data = self.time_range_data.get(self.time_range, {})
+            prices_list = range_data.get('prices', [])[-60:]
+            ma_short_list = []  # 历史数据暂不显示均线
+
+        if len(prices_list) < 2:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
                 title="[bright_cyan]价格走势[/bright_cyan]",
                 style="",  # 使用终端默认背景
                 border_style="bright_cyan"
             )
-
-        prices_list = list(self.prices)[-60:]
-        ma_short_list = list(self.ma_short)[-60:] if len(self.ma_short) > 0 else []
 
         min_p = min(prices_list)
         max_p = max(prices_list)
@@ -364,16 +402,22 @@ class ProfessionalDashboard:
 
     def render_volume(self) -> Panel:
         """渲染成交量柱状图"""
-        if len(self.volumes) < 2:
+        # 根据当前周期选择数据源
+        if self.time_range == '1D':
+            volumes_list = list(self.volumes)[-60:]
+            prices_list = list(self.prices)[-60:]
+        else:
+            range_data = self.time_range_data.get(self.time_range, {})
+            volumes_list = range_data.get('volumes', [])[-60:]
+            prices_list = range_data.get('prices', [])[-60:]
+
+        if len(volumes_list) < 2:
             return Panel(
                 Align.center(Text("等待数据...", style="dim")),
                 title="[bright_yellow]成交量[/bright_yellow]",
                 style="",  # 使用终端默认背景
                 border_style="bright_yellow"
             )
-
-        volumes_list = list(self.volumes)[-60:]
-        prices_list = list(self.prices)[-60:]
 
         max_vol = max(volumes_list) if volumes_list else 1
 
@@ -451,8 +495,8 @@ class ProfessionalDashboard:
         text.append("快捷键: ", style="dim")
         text.append("Ctrl+C", style="bright_white")
         text.append("=退出  ", style="dim")
-        text.append("Space", style="bright_white")
-        text.append("=暂停  ", style="dim")
+        text.append("1-6", style="bright_white")
+        text.append("=切换周期  ", style="dim")
         text.append("R", style="bright_white")
         text.append("=刷新", style="dim")
 
@@ -462,12 +506,72 @@ class ProfessionalDashboard:
             border_style="dim"
         )
 
+    # ========== 时间周期切换方法 ==========
+
+    def switch_time_range(self, range_key: str):
+        """切换时间周期
+
+        Args:
+            range_key: 周期键（1D, 5日, 日K, 周K, 月K, 年K）
+        """
+        if range_key in self.time_ranges:
+            old_range = self.time_range
+            self.time_range = range_key
+            self.add_log(f"切换周期: {old_range} → {range_key}", "info")
+
+    async def load_historical_data(self, symbol: str, range_key: str):
+        """加载历史数据
+
+        Args:
+            symbol: 交易对符号
+            range_key: 周期键
+        """
+        try:
+            import ccxt
+
+            # 映射周期到ccxt的timeframe
+            timeframe_map = {
+                '1D': ('1m', 1440),      # 1天，1分钟K线，1440根
+                '5日': ('5m', 1440),     # 5天，5分钟K线，1440根
+                '日K': ('1h', 720),      # 30天，1小时K线，720根
+                '周K': ('1d', 180),      # 180天，1天K线，180根
+                '月K': ('1d', 365),      # 365天，1天K线，365根
+                '年K': ('1w', 260)       # 5年，1周K线，260根
+            }
+
+            if range_key not in timeframe_map:
+                return
+
+            timeframe, limit = timeframe_map[range_key]
+
+            # 使用ccxt获取历史数据
+            exchange = ccxt.binance()
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+
+            # 提取数据
+            prices = [candle[4] for candle in ohlcv]  # Close price
+            timestamps = [candle[0] for candle in ohlcv]  # Timestamp
+            volumes = [candle[5] for candle in ohlcv]  # Volume
+
+            # 存储到time_range_data
+            self.time_range_data[range_key] = {
+                'prices': prices,
+                'timestamps': timestamps,
+                'volumes': volumes
+            }
+
+            self.add_log(f"已加载 {range_key} 历史数据 ({len(prices)} 个数据点)", "info")
+
+        except Exception as e:
+            self.add_log(f"加载历史数据失败: {str(e)}", "error")
+
     def render(self) -> Layout:
         """渲染完整仪表板"""
         layout = self.create_layout()
 
         layout["header"].update(self.render_header())
         layout["price_stats"].update(self.render_price_stats())
+        layout["period_tabs"].update(self.render_period_tabs())
         layout["chart"].update(self.render_chart())
         layout["volume"].update(self.render_volume())
         layout["logs"].update(self.render_logs())
