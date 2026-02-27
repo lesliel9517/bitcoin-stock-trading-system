@@ -98,10 +98,10 @@ class ProfessionalDashboard:
 
         # 左侧：价格统计 + 周期Tab + 图表 + 成交量 + 日志
         layout["left"].split_column(
-            Layout(name="price_stats", size=6),
+            Layout(name="price_stats", size=5),      # 减小价格统计区高度
             Layout(name="period_tabs", size=3),
-            Layout(name="chart", ratio=3),
-            Layout(name="volume", size=5),
+            Layout(name="chart", ratio=4),           # 增加图表区比例
+            Layout(name="volume", size=4),           # 减小成交量区高度
             Layout(name="logs", ratio=1)
         )
 
