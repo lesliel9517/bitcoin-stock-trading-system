@@ -221,10 +221,65 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
 
         dashboard.add_log("启动交易系统...", "info")
 
+        # 键盘输入队列
+        keyboard_input = asyncio.Queue()
+
+        # 键盘监听任务
+        async def keyboard_listener():
+            """监听键盘输入（非阻塞）"""
+            import sys
+            import termios
+            import tty
+
+            # 保存原始终端设置
+            old_settings = termios.tcgetattr(sys.stdin)
+
+            try:
+                # 设置为非阻塞模式
+                tty.setcbreak(sys.stdin.fileno())
+
+                while True:
+                    # 检查是否有输入
+                    import select
+                    if select.select([sys.stdin], [], [], 0.1)[0]:
+                        char = sys.stdin.read(1)
+                        await keyboard_input.put(char)
+                    await asyncio.sleep(0.05)
+            finally:
+                # 恢复终端设置
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+
+        # 启动键盘监听任务
+        keyboard_task = asyncio.create_task(keyboard_listener())
+
         with Live(dashboard.render(), refresh_per_second=4, console=console) as live:
             try:
                 while True:
                     try:
+                        # 处理键盘输入
+                        try:
+                            key = keyboard_input.get_nowait()
+                            # 处理周期切换快捷键
+                            if key == '1':
+                                dashboard.switch_time_range('1D')
+                            elif key == '2':
+                                dashboard.switch_time_range('5日')
+                                await dashboard.load_historical_data(symbol, '5日')
+                            elif key == '3':
+                                dashboard.switch_time_range('日K')
+                                await dashboard.load_historical_data(symbol, '日K')
+                            elif key == '4':
+                                dashboard.switch_time_range('周K')
+                                await dashboard.load_historical_data(symbol, '周K')
+                            elif key == '5':
+                                dashboard.switch_time_range('月K')
+                                await dashboard.load_historical_data(symbol, '月K')
+                            elif key == '6':
+                                dashboard.switch_time_range('年K')
+                                await dashboard.load_historical_data(symbol, '年K')
+                        except asyncio.QueueEmpty:
+                            pass
+
                         event = await asyncio.wait_for(market_events.get(), timeout=0.1)
 
                         price = float(event.price)
@@ -347,6 +402,12 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
             except KeyboardInterrupt:
                 pass  # Silent exit
             finally:
+                # 取消键盘监听任务
+                keyboard_task.cancel()
+                try:
+                    await keyboard_task
+                except asyncio.CancelledError:
+                    pass
                 await data_feed.stop()
                 await event_bus.stop()
 
