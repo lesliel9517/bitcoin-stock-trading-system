@@ -119,33 +119,53 @@ class ProfessionalDashboard:
         )
 
     def render_price_stats(self) -> Panel:
-        """渲染价格统计区：当前价格 + 涨跌 + 24h统计"""
-        table = Table.grid(padding=(0, 1))
-        table.add_column(justify="left")
-        table.add_column(justify="right")
+        """渲染价格统计区：左侧大号价格 + 右侧市场指标"""
+        table = Table.grid(padding=(0, 2))
+        table.add_column(justify="left", ratio=2)  # 左侧大号价格
+        table.add_column(justify="left", ratio=1)  # 右侧第一列
+        table.add_column(justify="left", ratio=1)  # 右侧第二列
 
-        # 当前价格
+        # 左侧：大号当前价格 + 涨跌
         price_color = "bright_green" if self.price_change >= 0 else "bright_red"
         change_sign = "+" if self.price_change >= 0 else ""
 
-        price_text = Text()
-        price_text.append(f"${self.current_price:,.2f}", style=f"bold {price_color}")
-        price_text.append(f"  {change_sign}${self.price_change:,.2f} ({change_sign}{self.price_change_pct:.2f}%)", style=price_color)
+        left_content = Text()
+        left_content.append(f"${self.current_price:,.2f}\n", style=f"bold {price_color}")
+        left_content.append(
+            f"{change_sign}${self.price_change:,.2f}  {change_sign}{self.price_change_pct:.2f}%",
+            style=f"{price_color}"
+        )
 
-        # 24h统计
-        stats_text = Text()
-        stats_text.append(f"24H高: ${self.high_24h:,.2f}  ", style="bright_white")
-        stats_text.append(f"24H低: ${self.low_24h:,.2f}  ", style="bright_white")
-        stats_text.append(f"成交量: {self._format_volume(self.volume_24h)}", style="bright_cyan")
+        # 右侧第一列：市场指标
+        col1 = Text()
+        col1.append(f"最高  ${self.high_24h:,.2f}\n", style="bright_white")
+        col1.append(f"今开  ${self.open_price:,.2f}\n", style="bright_white")
+        col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="bright_cyan")
+        col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="bright_yellow")
 
-        table.add_row(price_text, "")
-        table.add_row(stats_text, "")
+        # 右侧第二列：市场指标
+        col2 = Text()
+        col2.append(f"最低  ${self.low_24h:,.2f}\n", style="bright_white")
+        col2.append(f"昨收  ${self.prev_close:,.2f}\n", style="bright_white")
+
+        # 24H涨跌
+        change_24h_color = "bright_green" if self.price_change >= 0 else "bright_red"
+        col2.append(
+            f"24H涨跌  {change_sign}{self.price_change_pct:.2f}%\n",
+            style=change_24h_color
+        )
+
+        # 振幅
+        amplitude = self._calculate_amplitude()
+        col2.append(f"振幅  {amplitude:.2f}%", style="bright_magenta")
+
+        table.add_row(left_content, col1, col2)
 
         return Panel(
             table,
             style="white on #2a2a2a",
             border_style="bright_black",
-            padding=(0, 1)
+            padding=(1, 2)
         )
         col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="dim")
         col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="dim")
