@@ -528,6 +528,7 @@ class ProfessionalDashboard:
         """
         try:
             import ccxt
+            import os
 
             # 映射周期到ccxt的timeframe
             timeframe_map = {
@@ -544,8 +545,23 @@ class ProfessionalDashboard:
 
             timeframe, limit = timeframe_map[range_key]
 
+            # 配置代理
+            proxies = {}
+            http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
+            https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
+
+            if http_proxy:
+                proxies['http'] = http_proxy
+            if https_proxy:
+                proxies['https'] = https_proxy
+
             # 使用ccxt获取历史数据
-            exchange = ccxt.binance()
+            exchange_config = {}
+            if proxies:
+                exchange_config['proxies'] = proxies
+                self.add_log(f"使用代理: {http_proxy or https_proxy}", "info")
+
+            exchange = ccxt.binance(exchange_config)
             ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
 
             # 提取数据
