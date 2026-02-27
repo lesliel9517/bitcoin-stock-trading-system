@@ -169,12 +169,16 @@ class ProfessionalDashboard:
         stats_table.add_row(col1, col2)
 
         # 组合：价格在上，统计字段在下
-        content = Text()
-        content.append(price_text)
-        content.append("\n\n")
+        from rich.console import Group
+
+        content = Group(
+            price_text,
+            Text(""),  # 空行
+            stats_table
+        )
 
         return Panel(
-            Align.left(content) + "\n" + stats_table,
+            content,
             style="",  # 使用终端默认背景
             border_style="bright_black",
             padding=(1, 2)
