@@ -43,9 +43,20 @@ class ProfessionalDashboard:
         self.high_24h = 0
         self.low_24h = 0
         self.volume_24h = 0
+        self.volume_24h_accumulated = 0  # 累积的24h成交量
         self.open_price = 0
         self.prev_close = 0
-        self.all_time_high = 0
+
+        # Historical extremes
+        self.all_time_high = 0  # 历史最高价
+        self.all_time_low = float('inf')  # 历史最低价
+        self.week_52_high = 0  # 52周最高（从交易所获取）
+        self.week_52_low = 0  # 52周最低（从交易所获取）
+
+        # 52-week extremes
+        self.week_52_high = 0
+        self.week_52_low = float('inf')
+        self.week_52_prices = deque(maxlen=52*7*24*60)  # 52周的分钟数据
 
         # Portfolio data
         self.equity = 100000
@@ -66,6 +77,10 @@ class ProfessionalDashboard:
         # Market state
         self.market_regime = "未知"
         self.volatility = "正常"
+
+        # Strategy info
+        self.strategy_name = "adaptive_strategy"  # 当前策略名称
+        self.available_strategies = ["ma_cross", "adaptive_strategy"]  # 可用策略列表
 
         # Time range
         self.time_range = "1D"  # 1D, 5日, 日K, 周K, 月K, 年K
@@ -98,26 +113,33 @@ class ProfessionalDashboard:
 
         # 左侧：价格统计 + 周期Tab + 图表 + 成交量 + 日志
         layout["left"].split_column(
-            Layout(name="price_stats", size=5),
+            Layout(name="price_stats", size=11),     # 增加到11行以显示所有统计字段（含历史最低）
             Layout(name="period_tabs", size=3),
-            Layout(name="chart", ratio=1),           # 进一步减小图表区比例
-            Layout(name="volume", size=3),           # 减小成交量区高度
+            Layout(name="chart", ratio=1),
+            Layout(name="volume", size=3),
             Layout(name="logs", ratio=1)
         )
 
         return layout
 
     def render_header(self) -> Panel:
-        """渲染顶部标题栏：标题 + 时间"""
+        """渲染顶部标题栏：标题 + 策略 + 时间"""
         text = Text()
 
         # 左侧：标题
         text.append("BTC-USD 实时交易", style="bold cyan")
 
-        # 中间填充
-        text.append("  " * 15)
+        # 中间：当前策略
+        text.append("  |  ", style="dim")
+        strategy_display = {
+            "ma_cross": "均线交叉",
+            "adaptive_strategy": "自适应策略"
+        }
+        text.append(f"策略: {strategy_display.get(self.strategy_name, self.strategy_name)}",
+                   style="bold bright_yellow")
 
         # 右侧：时间
+        text.append("  " * 10)
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         text.append(current_time, style="dim")
 
@@ -145,16 +167,17 @@ class ProfessionalDashboard:
         stats_table.add_column(justify="left")  # 第一列
         stats_table.add_column(justify="left")  # 第二列
 
-        # 第一列：最高、今开、成交量、历史最高
+        # 第一列：24H最高、今开、成交量、历史最高、52周最高
         col1 = Text()
-        col1.append(f"最高  ${self.high_24h:,.2f}\n", style="bright_white")
+        col1.append(f"24H最高  ${self.high_24h:,.2f}\n", style="bright_white")
         col1.append(f"今开  ${self.open_price:,.2f}\n", style="bright_white")
         col1.append(f"成交量  {self._format_volume(self.volume_24h)}\n", style="bright_cyan")
-        col1.append(f"历史最高  ${self.all_time_high:,.2f}", style="bright_yellow")
+        col1.append(f"历史最高  ${self.all_time_high:,.2f}\n", style="bright_yellow")
+        col1.append(f"52周最高  ${self.week_52_high:,.2f}", style="bright_magenta")
 
-        # 第二列：最低、昨收、24H涨跌、振幅
+        # 第二列：24H最低、昨收、24H涨跌、历史最低、52周最低
         col2 = Text()
-        col2.append(f"最低  ${self.low_24h:,.2f}\n", style="bright_white")
+        col2.append(f"24H最低  ${self.low_24h:,.2f}\n", style="bright_white")
         col2.append(f"昨收  ${self.prev_close:,.2f}\n", style="bright_white")
 
         change_24h_color = "bright_green" if self.price_change >= 0 else "bright_red"
@@ -163,8 +186,9 @@ class ProfessionalDashboard:
             style=change_24h_color
         )
 
-        amplitude = self._calculate_amplitude()
-        col2.append(f"振幅  {amplitude:.2f}%", style="bright_magenta")
+        all_time_low_display = f"${self.all_time_low:,.2f}" if self.all_time_low < float('inf') else "$0.00"
+        col2.append(f"历史最低  {all_time_low_display}\n", style="bright_yellow")
+        col2.append(f"52周最低  ${self.week_52_low:,.2f}", style="bright_magenta")
 
         stats_table.add_row(col1, col2)
 
@@ -285,7 +309,7 @@ class ProfessionalDashboard:
         )
 
     def render_chart(self) -> Panel:
-        """渲染主图表区：价格线 + 均线"""
+        """渲染主图表区：价格线 + 均线 + 当前价虚线 + 双刻度"""
         # 根据当前周期选择数据源
         if self.time_range == '1D':
             # 实时数据
@@ -345,6 +369,17 @@ class ProfessionalDashboard:
                     if 0 <= row < chart_height and chart[row][i] == " ":
                         chart[row][i] = "[yellow]·[/yellow]"
 
+        # 绘制当前价虚线（白色虚线）
+        if self.current_price > 0 and min_p <= self.current_price <= max_p:
+            current_row = int(((self.current_price - min_p) / range_p) * (chart_height - 1))
+            current_row = chart_height - 1 - current_row
+            if 0 <= current_row < chart_height:
+                for i in range(chart_width):
+                    if chart[current_row][i] == " ":
+                        # 虚线效果：每隔一个字符绘制
+                        if i % 2 == 0:
+                            chart[current_row][i] = "[dim white]─[/dim white]"
+
         # 标记交易点
         for trade in self.trades[-10:]:
             if 0 <= trade['index'] < len(self.prices):
@@ -358,20 +393,36 @@ class ProfessionalDashboard:
                     else:
                         chart[row][idx] = "[bright_red]S[/bright_red]"
 
-        # 构建图表字符串
+        # 构建图表字符串（左侧价格刻度 + 右侧涨跌幅刻度）
         lines = []
+        base_price = self.open_price if self.open_price > 0 else self.price_24h_start
+        if base_price == 0:
+            base_price = min_p
+
         for row_idx, row in enumerate(chart):
+            # 左侧价格刻度
             if row_idx % 3 == 0:
                 price_at_row = max_p - (range_p * row_idx / (chart_height - 1))
                 left_label = f"${price_at_row:>8.2f} │"
             else:
                 left_label = " " * 11 + "│"
 
-            lines.append(left_label + "".join(row))
+            # 右侧涨跌幅刻度
+            if row_idx % 3 == 0:
+                price_at_row = max_p - (range_p * row_idx / (chart_height - 1))
+                change_pct = ((price_at_row - base_price) / base_price) * 100 if base_price > 0 else 0
+                sign = "+" if change_pct >= 0 else ""
+                color = "bright_green" if change_pct >= 0 else "bright_red"
+                right_label = f"│ [{color}]{sign}{change_pct:>6.2f}%[/{color}]"
+            else:
+                right_label = "│"
 
-        lines.append(" " * 11 + "└" + "─" * chart_width)
+            lines.append(left_label + "".join(row) + right_label)
+
+        # 底部横线
+        lines.append(" " * 11 + "└" + "─" * chart_width + "┘")
         lines.append("")
-        lines.append("[dim][bright_blue]●[/bright_blue]=价格  [yellow]·[/yellow]=均线  [bright_green]B[/bright_green]=买入  [bright_red]S[/bright_red]=卖出[/dim]")
+        lines.append("[dim][bright_blue]●[/bright_blue]=价格  [yellow]·[/yellow]=均线  [dim white]─[/dim white]=当前价  [bright_green]B[/bright_green]=买入  [bright_red]S[/bright_red]=卖出[/dim]")
 
         chart_text = "\n".join(lines)
 
@@ -480,6 +531,8 @@ class ProfessionalDashboard:
         text.append("=退出  ", style="dim")
         text.append("1-6", style="bright_white")
         text.append("=切换周期  ", style="dim")
+        text.append("S", style="bright_white")
+        text.append("=切换策略  ", style="dim")
         text.append("R", style="bright_white")
         text.append("=刷新", style="dim")
 
@@ -502,6 +555,23 @@ class ProfessionalDashboard:
             self.time_range = range_key
             self.add_log(f"切换周期: {old_range} → {range_key}", "info")
 
+    def switch_strategy(self):
+        """切换策略"""
+        current_index = self.available_strategies.index(self.strategy_name)
+        next_index = (current_index + 1) % len(self.available_strategies)
+        old_strategy = self.strategy_name
+        self.strategy_name = self.available_strategies[next_index]
+
+        strategy_display = {
+            "ma_cross": "均线交叉",
+            "adaptive_strategy": "自适应策略"
+        }
+        self.add_log(
+            f"切换策略: {strategy_display.get(old_strategy, old_strategy)} → {strategy_display.get(self.strategy_name, self.strategy_name)}",
+            "info"
+        )
+        return self.strategy_name
+
     async def load_historical_data(self, symbol: str, range_key: str):
         """加载历史数据
 
@@ -510,7 +580,7 @@ class ProfessionalDashboard:
             range_key: 周期键
         """
         try:
-            import ccxt
+            import ccxt.async_support as ccxt
             import os
 
             # 映射周期到ccxt的timeframe
@@ -528,45 +598,70 @@ class ProfessionalDashboard:
 
             timeframe, limit = timeframe_map[range_key]
 
-            # 配置代理 - ccxt需要特殊的配置方式
+            # 配置代理和超时
             exchange_config = {
                 'enableRateLimit': True,
+                'timeout': 30000,  # 30秒超时
             }
 
+            # 检查代理配置
             http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
             https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
 
-            # ccxt使用aiohttp，需要设置httpProxy和httpsProxy
             if http_proxy or https_proxy:
                 proxy_url = https_proxy or http_proxy
                 exchange_config['proxies'] = {
                     'http': proxy_url,
                     'https': proxy_url,
                 }
-                # ccxt还需要这个配置
                 exchange_config['aiohttp_proxy'] = proxy_url
-                self.add_log(f"使用代理: {proxy_url}", "info")
+                self.add_log(f"使用代理加载历史数据", "info")
+            else:
+                self.add_log(f"警告: 未配置代理，可能无法访问Binance API", "error")
+                self.add_log(f"请设置环境变量 HTTP_PROXY 或 HTTPS_PROXY", "error")
+                return
 
-            # 使用ccxt获取历史数据
+            # 格式化symbol为Binance格式
+            binance_symbol = symbol.replace('-', '').replace('/', '')
+            if binance_symbol.endswith('USD'):
+                binance_symbol = binance_symbol[:-3] + 'USDT'
+
+            self.add_log(f"正在加载 {range_key} 历史数据...", "info")
+
+            # 使用ccxt异步获取历史数据
             exchange = ccxt.binance(exchange_config)
-            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+            try:
+                ohlcv = await exchange.fetch_ohlcv(binance_symbol, timeframe, limit=limit)
 
-            # 提取数据
-            prices = [candle[4] for candle in ohlcv]  # Close price
-            timestamps = [candle[0] for candle in ohlcv]  # Timestamp
-            volumes = [candle[5] for candle in ohlcv]  # Volume
+                # 提取数据
+                prices = [candle[4] for candle in ohlcv]  # Close price
+                timestamps = [candle[0] for candle in ohlcv]  # Timestamp
+                volumes = [candle[5] for candle in ohlcv]  # Volume
 
-            # 存储到time_range_data
-            self.time_range_data[range_key] = {
-                'prices': prices,
-                'timestamps': timestamps,
-                'volumes': volumes
-            }
+                # 存储到time_range_data
+                self.time_range_data[range_key] = {
+                    'prices': prices,
+                    'timestamps': timestamps,
+                    'volumes': volumes
+                }
 
-            self.add_log(f"已加载 {range_key} 历史数据 ({len(prices)} 个数据点)", "info")
+                self.add_log(f"✓ 已加载 {range_key} 历史数据 ({len(prices)} 个数据点)", "info")
 
+            finally:
+                await exchange.close()
+
+        except ImportError:
+            self.add_log(f"缺少ccxt库，无法加载历史数据", "error")
+            self.add_log(f"请运行: pip install ccxt", "error")
         except Exception as e:
-            self.add_log(f"加载历史数据失败: {str(e)}", "error")
+            error_msg = str(e)
+            if '451' in error_msg or 'restricted location' in error_msg.lower():
+                self.add_log(f"Binance API地区限制，无法加载历史数据", "error")
+                self.add_log(f"请配置代理或使用实时数据(1D)", "error")
+            elif 'proxy' in error_msg.lower() or 'connection' in error_msg.lower():
+                self.add_log(f"网络连接失败，请检查代理配置", "error")
+            else:
+                self.add_log(f"加载历史数据失败: {error_msg[:100]}", "error")
 
     def render(self) -> Layout:
         """渲染完整仪表板"""
@@ -587,8 +682,20 @@ class ProfessionalDashboard:
 
     # ========== 数据更新方法 ==========
 
-    def update_price(self, price: float, volume: float = 0):
-        """更新价格数据"""
+    def update_price(self, price: float, volume_24h: float = 0, high_24h: float = None, low_24h: float = None,
+                     open_price: float = None, tick_volume: float = 0, week_52_high: float = None, week_52_low: float = None):
+        """更新价格数据
+
+        Args:
+            price: 当前价格
+            volume_24h: 24小时总成交量（来自交易所ticker）
+            high_24h: 24小时最高价（来自交易所）
+            low_24h: 24小时最低价（来自交易所）
+            open_price: 24h开盘价（来自交易所，近似昨收）
+            tick_volume: 单个tick的成交量（用于图表）
+            week_52_high: 52周最高价（来自交易所）
+            week_52_low: 52周最低价（来自交易所）
+        """
         now = datetime.now()
         old_price = self.current_price
         self.current_price = price
@@ -600,31 +707,64 @@ class ProfessionalDashboard:
             self.last_reset_date = current_date
             self.add_log(f"新的一天开始，基准价格: ${price:.2f}", "info")
 
-        # 添加到图表数据
+        # 添加到图表数据（使用tick_volume用于图表显示）
         self.timestamps.append(now)
         self.prices.append(price)
-        self.volumes.append(volume)
+        self.volumes.append(tick_volume if tick_volume > 0 else volume_24h / 1000)  # 图表用
 
-        # 计算涨跌
-        if self.price_24h_start > 0:
-            self.price_change = price - self.price_24h_start
-            self.price_change_pct = (self.price_change / self.price_24h_start) * 100
+        # 更新24h统计数据（优先使用交易所提供的数据）
+        if volume_24h > 0:
+            self.volume_24h = volume_24h
+
+        if high_24h is not None and high_24h > 0:
+            self.high_24h = high_24h
+        elif self.high_24h == 0:
+            self.high_24h = price
+        else:
+            self.high_24h = max(self.high_24h, price)
+
+        if low_24h is not None and low_24h > 0:
+            self.low_24h = low_24h
+        elif self.low_24h == 0:
+            self.low_24h = price
+        else:
+            self.low_24h = min(self.low_24h, price)
+
+        if open_price is not None and open_price > 0:
+            self.open_price = open_price
+            # 使用24h开盘价作为昨收的近似值
+            if self.prev_close == 0:
+                self.prev_close = open_price
+        elif self.open_price == 0:
+            self.open_price = price
+
+        # 计算涨跌（使用开盘价）
+        base_price = self.open_price if self.open_price > 0 else self.price_24h_start
+        if base_price > 0:
+            self.price_change = price - base_price
+            self.price_change_pct = (self.price_change / base_price) * 100
         else:
             self.price_24h_start = price
             self.price_change = 0
             self.price_change_pct = 0
 
-        # 更新24h高低
-        if self.high_24h == 0:
-            self.high_24h = price
-            self.low_24h = price
-        else:
-            self.high_24h = max(self.high_24h, price)
-            self.low_24h = min(self.low_24h, price)
-
-        # 更新历史最高
+        # 更新历史最高和最低
         if price > self.all_time_high:
             self.all_time_high = price
+        if price < self.all_time_low:
+            self.all_time_low = price
+
+        # 更新52周最高和最低（如果交易所提供）
+        if week_52_high is not None and week_52_high > 0:
+            self.week_52_high = week_52_high
+        if week_52_low is not None and week_52_low > 0:
+            self.week_52_low = week_52_low
+
+        # 更新52周数据
+        self.week_52_prices.append(price)
+        if len(self.week_52_prices) > 0:
+            self.week_52_high = max(self.week_52_prices)
+            self.week_52_low = min(self.week_52_prices)
 
         # 记录显著价格变化
         if old_price > 0:

@@ -101,6 +101,65 @@ def start(ctx, strategy, symbol, mode, capital, duration, update_interval, initi
         logger.error(f"Trading failed: {e}", exc_info=True)
 
 
+async def fetch_52_week_data(symbol: str):
+    """从Binance获取52周最高/最低数据
+
+    Args:
+        symbol: 交易对符号（如BTC-USD）
+
+    Returns:
+        tuple: (52周最高, 52周最低)
+    """
+    try:
+        import ccxt.async_support as ccxt
+        import os
+
+        # 配置代理
+        exchange_config = {
+            'enableRateLimit': True,
+            'timeout': 30000,
+        }
+
+        http_proxy = os.getenv('HTTP_PROXY') or os.getenv('http_proxy')
+        https_proxy = os.getenv('HTTPS_PROXY') or os.getenv('https_proxy')
+
+        if http_proxy or https_proxy:
+            proxy_url = https_proxy or http_proxy
+            exchange_config['proxies'] = {
+                'http': proxy_url,
+                'https': proxy_url,
+            }
+            exchange_config['aiohttp_proxy'] = proxy_url
+
+        # 格式化symbol为Binance格式
+        binance_symbol = symbol.replace('-', '').replace('/', '')
+        if binance_symbol.endswith('USD'):
+            binance_symbol = binance_symbol[:-3] + 'USDT'
+
+        # 使用ccxt获取过去365天的日K线数据
+        exchange = ccxt.binance(exchange_config)
+
+        try:
+            # 获取365天的日K线（52周 ≈ 364天）
+            ohlcv = await exchange.fetch_ohlcv(binance_symbol, '1d', limit=365)
+
+            if ohlcv and len(ohlcv) > 0:
+                # 计算52周最高/最低
+                week_52_high = max(candle[2] for candle in ohlcv)  # High price
+                week_52_low = min(candle[3] for candle in ohlcv)   # Low price
+
+                return week_52_high, week_52_low
+            else:
+                return 0, 0
+
+        finally:
+            await exchange.close()
+
+    except Exception as e:
+        # 如果获取失败，返回0（不影响主程序运行）
+        return 0, 0
+
+
 def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, initial_price, update_interval, time_range='live'):
     """Run trading with professional dashboard - silent mode, all output in dashboard"""
 
@@ -201,8 +260,22 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
             dashboard.add_log("✓ 已连接 Binance，接收实时数据", "info")
 
         # Initialize dashboard with data
-        dashboard.update_price(float(initial_price or 66886), 100.0)
+        dashboard.update_price(
+            price=float(initial_price or 66886),
+            volume_24h=0,
+            tick_volume=100.0
+        )
         dashboard.update_stats(float(capital), float(capital), "空仓", "unknown", "normal")
+
+        # 获取52周最高/最低数据
+        dashboard.add_log("正在获取52周历史数据...", "info")
+        week_52_high, week_52_low = await fetch_52_week_data(symbol)
+        if week_52_high > 0 and week_52_low > 0:
+            dashboard.week_52_high = week_52_high
+            dashboard.week_52_low = week_52_low
+            dashboard.add_log(f"✓ 52周最高: ${week_52_high:,.2f}, 最低: ${week_52_low:,.2f}", "info")
+        else:
+            dashboard.add_log("⚠ 无法获取52周数据（可能需要配置代理）", "error")
 
         await asyncio.sleep(0.5)
 
@@ -277,16 +350,66 @@ def _run_with_professional_dashboard(symbol, capital, ma_short, ma_long, mode, i
                             elif key == '6':
                                 dashboard.switch_time_range('年K')
                                 await dashboard.load_historical_data(symbol, '年K')
+                            elif key.lower() == 's':
+                                # 切换策略
+                                new_strategy_name = dashboard.switch_strategy()
+
+                                # 创建新策略实例
+                                if new_strategy_name == 'ma_cross':
+                                    from ...strategies.examples.ma_cross import MACrossStrategy
+                                    new_strategy = MACrossStrategy('ma_cross_live', {
+                                        'parameters': {
+                                            'ma_short': ma_short,
+                                            'ma_long': ma_long
+                                        }
+                                    })
+                                else:  # adaptive_strategy
+                                    new_strategy = AdaptiveStrategy('adaptive_live', {
+                                        'parameters': {
+                                            'ma_short': ma_short,
+                                            'ma_long': ma_long,
+                                            'volatility_window': 20,
+                                            'trend_window': 50
+                                        }
+                                    })
+
+                                # 替换策略
+                                strategy.stop()
+                                strategy = new_strategy
+                                strategy.event_bus = event_bus
+                                strategy.start()
+
+                                dashboard.add_log(f"✓ 策略已切换", "info")
                         except asyncio.QueueEmpty:
                             pass
 
                         event = await asyncio.wait_for(market_events.get(), timeout=0.1)
 
                         price = float(event.price)
-                        volume = float(event.volume) if event.volume else 0
+                        tick_volume = float(event.volume) if event.volume else 0
 
-                        # Update price
-                        dashboard.update_price(price, volume)
+                        # Binance sends two types of events:
+                        # 1. Trade events: only price and quantity (frequent)
+                        # 2. Ticker events: full 24h statistics (less frequent but complete)
+                        # We should use ticker data when available, otherwise just update price
+
+                        if event.high is not None and event.low is not None and event.open is not None:
+                            # This is a ticker event with full 24h statistics
+                            dashboard.update_price(
+                                price,
+                                volume_24h=tick_volume,  # 24h total volume
+                                high_24h=float(event.high),
+                                low_24h=float(event.low),
+                                open_price=float(event.open),
+                                tick_volume=tick_volume
+                            )
+                        else:
+                            # This is a trade event, only update price and tick volume
+                            dashboard.update_price(
+                                price,
+                                volume_24h=0,  # Don't override 24h volume
+                                tick_volume=tick_volume
+                            )
 
                         # Aggregate OHLC
                         if candle_data['count'] == 0:
@@ -831,7 +954,11 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
             event_bus.subscribe(EventType.MARKET, handle_market_event)
 
             # Initialize dashboard with some data so it's not empty on first render
-            dashboard.update_price(66886.0, 100.0)
+            dashboard.update_price(
+                price=66886.0,
+                volume_24h=0,
+                tick_volume=100.0
+            )
             dashboard.update_stats(float(portfolio.get_total_value()), float(portfolio.cash), "空仓", "unknown", "normal")
 
             # Give a moment for initial events to queue
@@ -849,10 +976,28 @@ def dashboard(symbol, capital, ma_short, ma_long, mode):
 
                             if isinstance(event, MarketEvent):
                                 price = float(event.price)
-                                volume = float(event.volume) if event.volume else 0
+                                tick_volume = float(event.volume) if event.volume else 0
 
-                                # Update price
-                                dashboard.update_price(price, volume)
+                                # Binance sends two types of events:
+                                # 1. Trade events: only price and quantity (frequent)
+                                # 2. Ticker events: full 24h statistics (less frequent but complete)
+                                if event.high is not None and event.low is not None and event.open is not None:
+                                    # This is a ticker event with full 24h statistics
+                                    dashboard.update_price(
+                                        price,
+                                        volume_24h=tick_volume,
+                                        high_24h=float(event.high),
+                                        low_24h=float(event.low),
+                                        open_price=float(event.open),
+                                        tick_volume=tick_volume
+                                    )
+                                else:
+                                    # This is a trade event, only update price
+                                    dashboard.update_price(
+                                        price,
+                                        volume_24h=0,
+                                        tick_volume=tick_volume
+                                    )
 
                                 # Aggregate OHLC data (every 10 ticks)
                                 if candle_data['count'] == 0:
